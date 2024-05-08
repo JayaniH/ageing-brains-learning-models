@@ -73,10 +73,10 @@ def execute_young_learning(valid_input, valid_output, threshold, save = False):
         for n in range(young_output_patterns.shape[1]):
             young_output_patterns[young_nodes_fired[:, n].astype(int), n] = 1  # transform them into 1
 
-        np.savetxt(os.path.join(BASE_PATH, 'data/young_output_patterns.csv'), young_output_patterns.astype(int), delimiter=',', fmt='%d')
-        np.savetxt(os.path.join(BASE_PATH, 'data/young_output_nodes_fired.csv'), young_nodes_fired.astype(int), delimiter=',', fmt='%d')
-        np.savetxt(os.path.join(BASE_PATH, 'data/young_over_th_signals.csv'), young_over_th_signals, delimiter=',', fmt='%.4f')
-        np.savetxt(os.path.join(BASE_PATH, 'data/young_iteration_count.csv'), young_iteration_count.astype(int), delimiter=',', fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, 'results/young_output_patterns.csv'), young_output_patterns.astype(int), delimiter=',', fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, 'results/young_output_nodes_fired.csv'), young_nodes_fired.astype(int), delimiter=',', fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, 'results/young_over_th_signals.csv'), young_over_th_signals, delimiter=',', fmt='%.4f')
+        np.savetxt(os.path.join(BASE_PATH, 'results/young_iteration_count.csv'), young_iteration_count.astype(int), delimiter=',', fmt='%d')
 
     return young_iteration_count, young_over_th_signals, young_nodes_fired
 
@@ -183,10 +183,10 @@ def execute_old_learning(valid_input, valid_output, threshold, save = False):
             old_output_patterns[old_nodes_fired[:, n].astype(int), n] = 1  # transform them into 1
 
         # Store values in .csv files
-        np.savetxt(os.path.join(BASE_PATH, 'data/old_output_patterns.csv'), old_output_patterns, delimiter=',', fmt='%d')
-        np.savetxt(os.path.join(BASE_PATH, 'data/old_output_nodes_fired.csv'), old_nodes_fired, delimiter=',', fmt='%d')
-        np.savetxt(os.path.join(BASE_PATH, 'data/old_over_th_signals.csv'), old_over_th_signals, delimiter=',', fmt='%.4f')
-        np.savetxt(os.path.join(BASE_PATH, 'data/old_iteration_count.csv'), old_iteration_count, delimiter=',', fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, 'results/old_output_patterns.csv'), old_output_patterns, delimiter=',', fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, 'results/old_output_nodes_fired.csv'), old_nodes_fired, delimiter=',', fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, 'results/old_over_th_signals.csv'), old_over_th_signals, delimiter=',', fmt='%.4f')
+        np.savetxt(os.path.join(BASE_PATH, 'results/old_iteration_count.csv'), old_iteration_count, delimiter=',', fmt='%d')
 
     return old_iteration_count, old_over_th_signals, old_nodes_fired, excluded_nodes
 
@@ -245,7 +245,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
                             xytext=(0, 3),  # 3 points vertical offset
                             textcoords="offset points",
                             ha='center', va='bottom', rotation='vertical')  # Rotate text vertically
-            else:
+            elif count > 0:
                 ax.annotate(f'{count}\n({percentage:.2f}%)',
                             xy=(bar.get_x() + bar.get_width() / 2, height),
                             xytext=(0, 3),  # 3 points vertical offset
