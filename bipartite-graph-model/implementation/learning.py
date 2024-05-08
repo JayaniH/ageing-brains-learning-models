@@ -16,10 +16,10 @@ def main():
     print("Young learning iterations:", young_iteration_count)
 
     # Old learning
-    old_n_iterations, old_over_th_signals, old_nodes_fired, excluded_nodes = execute_old_learning(valid_input, valid_output, threshold)
-    print("Old learning iterations:", old_n_iterations)
+    old_iteration_count, old_over_th_signals, old_nodes_fired, excluded_nodes = execute_old_learning(valid_input, valid_output, threshold)
+    print("Old learning iterations:", old_iteration_count)
 
-    learning_iterations = [young_iteration_count, old_n_iterations]
+    learning_iterations = [young_iteration_count, old_iteration_count]
     labels = ["Young", "Old"]
     colors = ["#EDB120", "#4DBEEE"]
     plot_learning_histograms(learning_iterations, labels, colors, grouped=True)  # Grouped bars
