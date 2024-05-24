@@ -6,7 +6,7 @@ from roulette_wheel_selection import roulette_wheel_selection
 from constants import BASE_PATH, ACTIVE_NODE_COUNT
 
 
-def execute_young_learning(valid_input, valid_output, threshold, save = False):
+def execute_young_learning(valid_input, valid_output, threshold, version = 2, save = False):
     """
     Execute the Young learning process.
 
@@ -25,48 +25,46 @@ def execute_young_learning(valid_input, valid_output, threshold, save = False):
     young_nodes_fired = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))
 
     # Loop over each input pattern
-    for i in range(valid_output.shape[1]):
+    for pattern_index in range(valid_output.shape[1]):
         loopcount = 0  # Initialize iteration count
         j = 0
         while True:
-            chosen_output_node = roulette_wheel_selection(valid_output[:, i])
-            if chosen_output_node in young_nodes_fired[:, i]:
+            chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            if chosen_output_node_index in young_nodes_fired[:, pattern_index]:
                 continue
 
-            activated_input_nodes = np.where(valid_input[:, chosen_output_node, i])[0] # The value is non-zero only in activated nodes as set previously
-            active_edges = valid_input[activated_input_nodes, chosen_output_node, i]
+            output_signal = valid_output[chosen_output_node_index, pattern_index]
 
-            chosen_edge_index = roulette_wheel_selection(active_edges)
-            chosen_edge = active_edges[chosen_edge_index]
+            activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0] # The value is non-zero only in activated nodes as set previously
+            candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]
 
-            ### OLD APPROACH ###
-            # new_output = valid_output[chosen_output_node, i] + (1 - chosen_edge) / 2
-            ### OR ###
-            # new_weight = chosen_edge + (1 - chosen_edge) / 2
-            # new_output = valid_output[chosen_output_node, i] + new_weight  # TODO: Check if this is correct. Does it double count the chosen edge?
-            ### END OLD APPROACH ###
+            chosen_edge_index = roulette_wheel_selection(candidate_edges)
+            chosen_edge = candidate_edges[chosen_edge_index]
 
-            ### NEW APPROACH ###
-            learning_rate = 3
-            c = 0
-            new_weight = (learning_rate * chosen_edge) + c
-            valid_input[activated_input_nodes[chosen_edge_index], chosen_output_node, i] = new_weight  # update the weight in the input matrix
+            if version == 1:
+                new_weight = chosen_edge + (1 - chosen_edge) / 2
+
+            elif version == 2:
+                learning_rate = 1.5
+                c = 0
+                new_weight = (learning_rate * chosen_edge) + c
+                
+            valid_input[activated_input_node_indices[chosen_edge_index], chosen_output_node_index, pattern_index] = new_weight  # update the weight in the input matrix    
             weight_diff = new_weight - chosen_edge
-            new_output = valid_output[chosen_output_node, i] + weight_diff
-            valid_output[chosen_output_node, i] = new_output  # update the output value in the output matrix
-            ### END NEW APPROACH ###
+            output_signal += weight_diff
+            valid_output[chosen_output_node_index, pattern_index] = output_signal  # update the output value in the output matrix
 
             loopcount += 1
 
-            if new_output >= threshold:
-                young_over_th_signals[j, i] = new_output
-                young_nodes_fired[j, i] = chosen_output_node
+            if output_signal >= threshold:
+                young_over_th_signals[j, pattern_index] = output_signal
+                young_nodes_fired[j, pattern_index] = chosen_output_node_index
                 j += 1
 
-            if np.sum(young_over_th_signals[:, i] != 0) == 6:
+            if np.sum(young_over_th_signals[:, pattern_index] != 0) == 6:
                 break
 
-        young_iteration_count[i] = loopcount
+        young_iteration_count[pattern_index] = loopcount
     
     if save:
         young_output_patterns = np.zeros((valid_output.shape[0], valid_output.shape[1]))  # output patterns
@@ -81,7 +79,7 @@ def execute_young_learning(valid_input, valid_output, threshold, save = False):
     return young_iteration_count, young_over_th_signals, young_nodes_fired
 
 
-def execute_old_learning(valid_input, valid_output, threshold, save = False):
+def execute_old_learning(valid_input, valid_output, threshold, version = 2, save = False):
     """
     Execute the Old learning process.
 
@@ -99,80 +97,81 @@ def execute_old_learning(valid_input, valid_output, threshold, save = False):
     old_over_th_signals = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))  # to store the nodes that fired
     old_nodes_fired = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))  # matrix with the index of the nodes fired
 
-    for i in range(valid_output.shape[1]):  # for each input pattern
+    for pattern_index in range(valid_output.shape[1]):  # for each input pattern
         loopcount = 0  # amount of iterations
         j = 0  # counter for the nodes that fired
 
         while True:  # for all the nodes
-            chosen_output_node = roulette_wheel_selection(valid_output[:, i])
-            if chosen_output_node in old_nodes_fired[:, i] or chosen_output_node in excluded_nodes[:, i]:  # if node has been previously selected, choose another one
+            chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            if chosen_output_node_index in old_nodes_fired[:, pattern_index] or chosen_output_node_index in excluded_nodes[:, pattern_index]:  # if node has been previously selected, choose another one
                 continue
 
-            activated_input_nodes = np.where(valid_input[:, chosen_output_node, i])[0]  # get the active nodes for the IP
-            active_edges = valid_input[activated_input_nodes, chosen_output_node, i]  # get the values for the active node
+            activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0]  # get the active nodes for the IP
+            candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]  # get the values for the active node
 
             # Choose an edge based on the active edges
-            chosen_edge_index = roulette_wheel_selection(active_edges)
+            chosen_edge_index = roulette_wheel_selection(candidate_edges)
 
-            chosen_edge = active_edges[chosen_edge_index]
-            ###
-            new_output = valid_output[chosen_output_node, i] 
-            ### OR ###
-            # new_output = valid_output[chosen_output_node, i] + chosen_edge # TODO: Check if this is correct. Why do we add the chosen edge to the output value?
-            ###
+            output_signal = valid_output[chosen_output_node_index, pattern_index] 
+
+            chosen_input_node_index = activated_input_node_indices[chosen_edge_index]
+
+            if version == 2:
+                candidate_edges = valid_input[chosen_input_node_index, :, pattern_index]
+                chosen_edge_index = chosen_output_node_index # the index of the chosen edge relative to the input node is the same as the output node
 
             coin_toss = np.random.randint(0, 2)
-            next_edge_position = 0
-            # next_edges = []
+            edge_position_counter = 0
 
             while True:
                 # Increment the counter
-                next_edge_position += 1
+                edge_position_counter += 1
 
                 # If the maximum number of iterations is reached, exclude the node and break the loop
-                if next_edge_position == 6:
-                    loopcount -= 5 # TODO: Check if this is correct. Why do we need to decrement the loop count?
-                    excluded_nodes[j, i] = chosen_output_node
+                if edge_position_counter == len(candidate_edges):
+                    loopcount -= (len(candidate_edges) - 1) # TODO: Check if this is correct. Why do we need to decrement the loop count?
+                    excluded_nodes[j, pattern_index] = chosen_output_node_index
                     break
 
                 # Choose the direction based on the random value x
                 if coin_toss == 0:
-                    search_array = active_edges
-                    active_edges_circular = np.hstack((search_array, search_array))
+                    # search_array = candidate_edges
+                    # candidate_edges_circular = np.hstack((search_array, search_array))
+                    next_edge_position = (chosen_edge_index + edge_position_counter) % len(candidate_edges)
                 else:
-                    search_array = np.flipud(active_edges)
-                    active_edges_circular = np.hstack((search_array, search_array))
+                    # search_array = np.flipud(candidate_edges)
+                    # candidate_edges_circular = np.hstack((search_array, search_array))
+                    next_edge_position = (chosen_edge_index - edge_position_counter) % len(candidate_edges)
 
-                chosen_edge_position = np.where(chosen_edge == search_array)[0][0]
+                # chosen_edge_position = np.where(chosen_edge == search_array)[0][0]
 
                 # Select the second edge and update the sum of edges
-                next_edge = active_edges_circular[chosen_edge_position + next_edge_position]
+                # next_edge = candidate_edges_circular[chosen_edge_position + edge_position_counter]
+                next_edge = candidate_edges[next_edge_position]
 
-                ###
-                # next_edges.append(next_edge)
-                # update = sum(next_edges) # TODO: Check if this is correct. Doesn't this count the same edge multiple times? Shouldn't we only add the second edge from the current iteration?
-                # new_output += update
-                ### OR ###
-                valid_input[activated_input_nodes[chosen_edge_index], chosen_output_node, i] += next_edge  # update the weight in the input matrix
-                new_output += next_edge
-                valid_output[chosen_output_node, i] = new_output    # update the output value in the output matrix
-                ###
+                valid_input[chosen_input_node_index, chosen_output_node_index, pattern_index] += next_edge  # update the weight in the input matrix
+
+                if version == 2:
+                    valid_input[chosen_input_node_index, next_edge_position, pattern_index] = 0  # update the weight in the input matrix
+
+                output_signal += next_edge
+                valid_output[chosen_output_node_index, pattern_index] = output_signal    # update the output value in the output matrix
 
                 # Increment the loop count
                 loopcount += 1
 
                 # If the threshold is exceeded, record the node
-                if new_output >= threshold:
-                    old_over_th_signals[j, i] = new_output
-                    old_nodes_fired[j, i] = chosen_output_node
+                if output_signal >= threshold:
+                    old_over_th_signals[j, pattern_index] = output_signal
+                    old_nodes_fired[j, pattern_index] = chosen_output_node_index
                     j+=1
                     break
             
             # If all nodes have exceeded the threshold, break the loop
-            if np.count_nonzero(old_over_th_signals[:, i]) == 6:
+            if np.count_nonzero(old_over_th_signals[:, pattern_index]) == 6:
                 break
         
-        old_iteration_count[i] = loopcount
+        old_iteration_count[pattern_index] = loopcount
 
     if save:
         # To later measure old output pattern similarity analysis
@@ -200,9 +199,12 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     :param colors: List of colors for the datasets
     :param grouped: If True, bars are grouped by dataset; otherwise, bars are overlapped
     """
+    maximum_iterations = max([max(data) for data in learning_data])
 
     # Calculate histogram for each dataset
-    histograms = [np.histogram(data, bins=np.arange(6, 15), range=(6, 15))[0] for data in learning_data]
+    histograms = [np.histogram(data, bins=np.arange(6, maximum_iterations + 2), range=(6, maximum_iterations + 1))[0] for data in learning_data]
+
+    maximum_count = max([max(histogram) for histogram in histograms])
     
     # Define width of bars
     bar_width = 0.35 if grouped else 0.7
@@ -211,7 +213,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     x_positions = np.arange(1, len(histograms[0]) + 1)
     
     # Create the figure and axis
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(10, 6))
 
     # Plot bars for each dataset
     bar_charts = []
@@ -226,40 +228,31 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     # Add labels, title, legend, etc.
     plt.xlabel("Number of iterations", fontsize=10)
     plt.ylabel("Valid input patterns", fontsize=10)
-    plt.ylim(0, 150000)
+    plt.ylim(0, maximum_count + 20000)
     plt.title("Number of Iterations for Young and Old learning", fontsize=12)
-    plt.xticks(x_positions + bar_width / 2, [str(i) for i in range(6, len(histograms[0]) + 6)])
+    plt.xticks(x_positions + bar_width / 2 if grouped else x_positions, [str(i) for i in range(6, len(histograms[0]) + 6)], rotation=45)
     plt.legend(fontsize=13)
 
     # Add text annotations
-    def autolabel(bars):
+    def autolabel(bars, total_count):
         """Attach a text label above each bar displaying its height."""
-
         for bar in bars:
             height = bar.get_height()
             count = int(height)
-            percentage = height / sum(histograms[0]) * 100
-            if grouped:
+            if count > 0:
+                percentage = height / total_count * 100
                 ax.annotate(f'{count} ({percentage:.2f}%)',
                             xy=(bar.get_x() + bar.get_width() / 2, height),
-                            xytext=(0, 3),  # 3 points vertical offset
+                            xytext=(0, 5),  # Increased vertical offset
                             textcoords="offset points",
-                            ha='center', va='bottom', rotation='vertical')  # Rotate text vertically
-            elif count > 0:
-                ax.annotate(f'{count}\n({percentage:.2f}%)',
-                            xy=(bar.get_x() + bar.get_width() / 2, height),
-                            xytext=(0, 3),  # 3 points vertical offset
-                            textcoords="offset points",
-                            ha='center', va='bottom')
+                            ha='center', va='bottom', fontsize=5, rotation='vertical')  # Smaller font size and vertical
 
-    for bar_chart in bar_charts:
-        autolabel(bar_chart)
+    for histogram, bar_chart in zip(histograms, bar_charts):
+        autolabel(bar_chart, sum(histogram))
 
     # Show plot
     plt.gca().set_facecolor('w')
     plt.tight_layout()
-    if grouped:
-        plt.savefig(os.path.join(BASE_PATH, 'figures/iterations_young_old_grouped.png'))
-    else:
-        plt.savefig(os.path.join(BASE_PATH, 'figures/iterations_young_old.png'))
+    filename = 'iterations_young_old_grouped.png' if grouped else 'iterations_young_old.png'
+    plt.savefig(os.path.join(BASE_PATH, 'figures', filename))
     plt.show()
