@@ -27,8 +27,9 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, sa
     # Loop over each input pattern
     for pattern_index in range(valid_output.shape[1]):
         loopcount = 0  # Initialize iteration count
-        j = 0
-        while True:
+        i = 0
+
+        while np.count_nonzero(young_over_th_signals[:, pattern_index]) < 6:  # While not all nodes have fired
             chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
             if chosen_output_node_index in young_nodes_fired[:, pattern_index]:
                 continue
@@ -57,12 +58,9 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, sa
             loopcount += 1
 
             if output_signal >= threshold:
-                young_over_th_signals[j, pattern_index] = output_signal
-                young_nodes_fired[j, pattern_index] = chosen_output_node_index
-                j += 1
-
-            if np.sum(young_over_th_signals[:, pattern_index] != 0) == 6:
-                break
+                young_over_th_signals[i, pattern_index] = output_signal
+                young_nodes_fired[i, pattern_index] = chosen_output_node_index
+                i += 1
 
         young_iteration_count[pattern_index] = loopcount
     
@@ -99,9 +97,9 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, save
 
     for pattern_index in range(valid_output.shape[1]):  # for each input pattern
         loopcount = 0  # amount of iterations
-        j = 0  # counter for the nodes that fired
+        i = 0  # counter for the nodes that fired
 
-        while True:  # for all the nodes
+        while np.count_nonzero(old_over_th_signals[:, pattern_index]) < 6:  # while not all nodes have fired
             chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
             if chosen_output_node_index in old_nodes_fired[:, pattern_index] or chosen_output_node_index in excluded_nodes[:, pattern_index]:  # if node has been previously selected, choose another one
                 continue
@@ -130,7 +128,7 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, save
                 # If the maximum number of iterations is reached, exclude the node and break the loop
                 if edge_position_counter == len(candidate_edges):
                     loopcount -= (len(candidate_edges) - 1) # TODO: Check if this is correct. Why do we need to decrement the loop count?
-                    excluded_nodes[j, pattern_index] = chosen_output_node_index
+                    excluded_nodes[i, pattern_index] = chosen_output_node_index
                     break
 
                 # Choose the direction based on the random value x
@@ -162,14 +160,10 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, save
 
                 # If the threshold is exceeded, record the node
                 if output_signal >= threshold:
-                    old_over_th_signals[j, pattern_index] = output_signal
-                    old_nodes_fired[j, pattern_index] = chosen_output_node_index
-                    j+=1
+                    old_over_th_signals[i, pattern_index] = output_signal
+                    old_nodes_fired[i, pattern_index] = chosen_output_node_index
+                    i+=1
                     break
-            
-            # If all nodes have exceeded the threshold, break the loop
-            if np.count_nonzero(old_over_th_signals[:, pattern_index]) == 6:
-                break
         
         old_iteration_count[pattern_index] = loopcount
 
