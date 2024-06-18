@@ -6,7 +6,7 @@ from roulette_wheel_selection import roulette_wheel_selection
 from constants import BASE_PATH, ACTIVE_NODE_COUNT
 
 
-def execute_young_learning(valid_input, valid_output, threshold, version = 2, save = False):
+def execute_young_learning(valid_input, valid_output, threshold, version = 2, output_node_selection = 'Roulette', save = False):
     """
     Execute the Young learning process.
 
@@ -14,6 +14,8 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, sa
     :param valid_output: The valid output signals
     :param active_node_count: The number of active nodes
     :param threshold: The chosen threshold value
+    :param version: The version of the learning process
+    :param output_node_selection: The method used to select the output node
     :param save: If True, save the results to .csv files
 
     :return: The number of iterations for each input pattern, the signals that exceeded the threshold, and the nodes that fired
@@ -22,38 +24,68 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, sa
     # Initialize arrays to store results
     young_iteration_count = np.zeros(valid_output.shape[1])
     young_over_th_signals = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))
-    young_nodes_fired = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))
+    young_nodes_fired = np.full((ACTIVE_NODE_COUNT, valid_output.shape[1]), -1)
 
     # Loop over each input pattern
     for pattern_index in range(valid_output.shape[1]):
         loopcount = 0  # Initialize iteration count
         i = 0
 
+        print(f'Pattern {pattern_index + 1}:\n')
+
         while np.count_nonzero(young_over_th_signals[:, pattern_index]) < 6:  # While not all nodes have fired
-            chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            if output_node_selection == 'Roulette':
+                chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+                # print max and selected output signal
+                print(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nloopcount: {loopcount}\n')
+            elif output_node_selection == 'Max':
+                # Choose the output node with the highest signal that has not fired yet
+                # Mask the fired nodes in the valid_output array
+                masked_output = valid_output[:, pattern_index].copy()
+                masked_output[young_nodes_fired[np.where(young_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
+
+                # Choose the output node with the highest signal that has not fired yet
+                chosen_output_node_index = np.argmax(masked_output)
+            else:
+                raise ValueError("Invalid output node selection method")
+
             if chosen_output_node_index in young_nodes_fired[:, pattern_index]:
                 continue
 
             output_signal = valid_output[chosen_output_node_index, pattern_index]
 
             activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0] # The value is non-zero only in activated nodes as set previously
-            candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]
+            
+            # choose and update an edge based on the active edges
+            if version == 1 or version == 2:
+                candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]
 
-            chosen_edge_index = roulette_wheel_selection(candidate_edges)
-            chosen_edge = candidate_edges[chosen_edge_index]
+                chosen_edge_index = roulette_wheel_selection(candidate_edges)
+                chosen_edge = candidate_edges[chosen_edge_index]
 
-            if version == 1:
-                new_weight = chosen_edge + (1 - chosen_edge) / 2
+                if version == 1:
+                    new_weight = chosen_edge + (1 - chosen_edge) / 2
 
-            elif version == 2:
-                learning_rate = 1.5
-                c = 0
-                new_weight = (learning_rate * chosen_edge) + c
+                elif version == 2:
+                    learning_rate = 1.5
+                    c = 0
+                    new_weight = (learning_rate * chosen_edge) + c
                 
-            valid_input[activated_input_node_indices[chosen_edge_index], chosen_output_node_index, pattern_index] = new_weight  # update the weight in the input matrix    
-            weight_diff = new_weight - chosen_edge
-            output_signal += weight_diff
-            valid_output[chosen_output_node_index, pattern_index] = output_signal  # update the output value in the output matrix
+                valid_input[activated_input_node_indices[chosen_edge_index], chosen_output_node_index, pattern_index] = new_weight  # update the weight in the input matrix    
+                weight_diff = new_weight - chosen_edge
+                output_signal += weight_diff
+                valid_output[chosen_output_node_index, pattern_index] = output_signal  # update the output value in the output matrix
+
+            # update the weight of all incoming edges
+            elif version == 3:
+                learning_rate = 1.5
+                # update the weight of all edges#
+                valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index] *= learning_rate
+                output_signal = np.sum(valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index])
+                valid_output[chosen_output_node_index, pattern_index] = output_signal
+
+            else:
+                raise ValueError("Invalid version number")
 
             loopcount += 1
 
@@ -77,7 +109,7 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, sa
     return young_iteration_count, young_over_th_signals, young_nodes_fired
 
 
-def execute_old_learning(valid_input, valid_output, threshold, version = 2, save = False):
+def execute_old_learning(valid_input, valid_output, threshold, version = 2, output_node_selection = 'Roulette', save = False):
     """
     Execute the Old learning process.
 
@@ -85,22 +117,37 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, save
     :param valid_output: The valid output signals
     :param active_node_count: The number of active nodes
     :param threshold: The chosen threshold value
+    :param version: The version of the learning process
+    :param output_node_selection: The method used to select the output node
     :param save: If True, save the results to .csv files
 
     :return: The number of iterations for each input pattern, the signals that exceeded the threshold, the nodes that fired, and the excluded nodes
     """
 
     old_iteration_count = np.zeros(valid_output.shape[1])  # to store how many iterations learning took
-    excluded_nodes = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))  # to store which nodes were excluded
+    excluded_nodes = np.full((ACTIVE_NODE_COUNT, valid_output.shape[1]), -1)  # to store which nodes were excluded
     old_over_th_signals = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))  # to store the nodes that fired
-    old_nodes_fired = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))  # matrix with the index of the nodes fired
+    old_nodes_fired = np.full((ACTIVE_NODE_COUNT, valid_output.shape[1]), -1)  # matrix with the index of the nodes fired
 
     for pattern_index in range(valid_output.shape[1]):  # for each input pattern
         loopcount = 0  # amount of iterations
         i = 0  # counter for the nodes that fired
 
         while np.count_nonzero(old_over_th_signals[:, pattern_index]) < 6:  # while not all nodes have fired
-            chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            if output_node_selection == 'Roulette':
+                chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            elif output_node_selection == 'Max':
+                # Choose the output node with the highest signal that has not fired yet
+                # Mask the fired nodes in the valid_output array
+                masked_output = valid_output[:, pattern_index].copy()
+                masked_output[old_nodes_fired[np.where(old_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
+                masked_output[excluded_nodes[np.where(excluded_nodes[:, pattern_index] != -1), pattern_index]] = -np.inf
+
+                # Choose the output node with the highest signal that has not fired yet
+                chosen_output_node_index = np.argmax(masked_output)
+            else:
+                raise ValueError("Invalid output node selection method")
+
             if chosen_output_node_index in old_nodes_fired[:, pattern_index] or chosen_output_node_index in excluded_nodes[:, pattern_index]:  # if node has been previously selected, choose another one
                 continue
 
@@ -222,7 +269,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     # Add labels, title, legend, etc.
     plt.xlabel("Number of iterations", fontsize=10)
     plt.ylabel("Valid input patterns", fontsize=10)
-    plt.ylim(0, maximum_count + 20000)
+    plt.ylim(0, maximum_count + (maximum_count * 0.1))
     plt.title("Number of Iterations for Young and Old learning", fontsize=12)
     plt.xticks(x_positions + bar_width / 2 if grouped else x_positions, [str(i) for i in range(6, len(histograms[0]) + 6)], rotation=45)
     plt.legend(fontsize=13)
