@@ -1,3 +1,4 @@
+import logging
 import os
 import numpy as np
 from itertools import combinations
@@ -5,8 +6,10 @@ import matplotlib.pyplot as plt
 from roulette_wheel_selection import roulette_wheel_selection
 from constants import BASE_PATH, ACTIVE_NODE_COUNT
 
+logging.basicConfig(filename=os.path.join(BASE_PATH, 'logs/learning.log'), filemode='w', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def execute_young_learning(valid_input, valid_output, threshold, version = 2, output_node_selection = 'Roulette', save = False):
+
+def execute_young_learning(valid_input, valid_output, threshold, version = 2, output_node_selection = 'Roulette', save = False, verbose = False):
     """
     Execute the Young learning process.
 
@@ -17,6 +20,7 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
     :param version: The version of the learning process
     :param output_node_selection: The method used to select the output node
     :param save: If True, save the results to .csv files
+    :param verbose: If True, log information and write to file
 
     :return: The number of iterations for each input pattern, the signals that exceeded the threshold, and the nodes that fired
     """
@@ -26,18 +30,20 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
     young_over_th_signals = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))
     young_nodes_fired = np.full((ACTIVE_NODE_COUNT, valid_output.shape[1]), -1)
 
+    if verbose:
+        logging.info("Starting Young learning process")
+
     # Loop over each input pattern
     for pattern_index in range(valid_output.shape[1]):
         loopcount = 0  # Initialize iteration count
         i = 0
 
-        print(f'Pattern {pattern_index + 1}:\n')
-
+        if verbose:
+            logging.info(f"Pattern {pattern_index + 1}")
+            
         while np.count_nonzero(young_over_th_signals[:, pattern_index]) < 6:  # While not all nodes have fired
             if output_node_selection == 'Roulette':
                 chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
-                # print max and selected output signal
-                print(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nloopcount: {loopcount}\n')
             elif output_node_selection == 'Max':
                 # Choose the output node with the highest signal that has not fired yet
                 # Mask the fired nodes in the valid_output array
@@ -48,6 +54,10 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
                 chosen_output_node_index = np.argmax(masked_output)
             else:
                 raise ValueError("Invalid output node selection method")
+            
+            if verbose:
+                logging.info(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nSelected output index (sorted): {np.where(np.sort(valid_output[:, pattern_index])[::-1] == valid_output[chosen_output_node_index, pattern_index])[0][0]},\nloopcount: {loopcount}\n')
+                # print(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nloopcount: {loopcount}\n')
 
             if chosen_output_node_index in young_nodes_fired[:, pattern_index]:
                 continue
@@ -93,6 +103,8 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
                 young_over_th_signals[i, pattern_index] = output_signal
                 young_nodes_fired[i, pattern_index] = chosen_output_node_index
                 i += 1
+                if verbose:
+                    logging.info(f'Node fired with signal {output_signal}\n')
 
         young_iteration_count[pattern_index] = loopcount
     
@@ -243,7 +255,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     maximum_iterations = max([max(data) for data in learning_data])
 
     # Calculate histogram for each dataset
-    histograms = [np.histogram(data, bins=np.arange(6, maximum_iterations + 2), range=(6, maximum_iterations + 1))[0] for data in learning_data]
+    histograms = [np.histogram(data, bins=np.arange(6, max(maximum_iterations, 10) + 2), range=(6, max(maximum_iterations, 10) + 1))[0] for data in learning_data]
 
     maximum_count = max([max(histogram) for histogram in histograms])
     
