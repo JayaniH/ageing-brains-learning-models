@@ -123,7 +123,7 @@ def get_output_statistics(valid_output):
 
     return variance, avg_variance, sd_variance
 
-def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance):
+def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance, subplots = False):
     """
     Plot the maximum signal reaching the output nodes for each input pattern and the variance in the output patterns
     :param output: The signal reaching the output nodes for each input pattern
@@ -133,32 +133,60 @@ def plot_signal_statistics(output, threshold, variance, avg_variance, sd_varianc
     :param sd_variance: The standard deviation of the variance in the output patterns
     """
 
-    # Plotting the thresholds
     graph = np.max(output, axis=0)  # Maximum signal reaching each of the nodes for a given IP
 
-    plt.figure(figsize=(12, 6))
+    # Plotting the thresholds - subplots
+    if subplots:
 
-    # Plot maximum signal reaching output nodes
-    plt.subplot(1, 2, 1)
-    plt.hist(graph, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
-    plt.xlim(0.2, 0.32)
-    plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
-    plt.title("Maximum signal reaching output nodes in all input patterns", fontsize=12)
-    plt.xlabel("Maximum signal", fontsize=10)
-    plt.ylabel("Input Patterns", fontsize=10)
-    plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
-    plt.gca().set_facecolor('w')
+        plt.figure(figsize=(12, 6))
 
-    # Plot the variance in output patterns
-    plt.subplot(1, 2, 2)
-    plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
-    plt.title("Output variance across each valid input pattern", fontsize=12)
-    plt.xlabel("Signal variance in output nodes", fontsize=10)
-    plt.ylabel("Input Patterns", fontsize=10)
-    plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
-    plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
-    plt.gca().set_facecolor('w')
+        # Plot maximum signal reaching output nodes
+        plt.subplot(1, 2, 1)
+        plt.hist(graph, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
+        plt.xlim(0.2, 0.32)
+        plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
+        plt.title("Maximum signal reaching the output nodes", fontsize=12)
+        plt.xlabel("Maximum output signal", fontsize=10)
+        plt.ylabel("Number of input patterns", fontsize=10)
+        plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
+        plt.gca().set_facecolor('w')
 
-    plt.tight_layout()
-    # plt.savefig(os.path.join(BASE_PATH, '/figures/thresholds_and_variance.png'))
-    plt.show()
+        # Plot the variance in output patterns
+        plt.subplot(1, 2, 2)
+        plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
+        plt.title("Output signal variance (difference between minimum and maximum)", fontsize=12)
+        plt.xlabel("Signal variance", fontsize=10)
+        plt.ylabel("Number of input patterns", fontsize=10)
+        plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
+        plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
+        plt.gca().set_facecolor('w')
+
+        plt.tight_layout()
+        # plt.savefig(os.path.join(BASE_PATH, '/figures/thresholds_and_variance.png'))
+        plt.show()
+
+    else:
+        # Plotting the thresholds - separate plots
+        # Plot maximum signal reaching output nodes
+        plt.hist(graph, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
+        plt.xlim(0.2, 0.32)
+        plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
+        plt.title("Maximum signal reaching output nodes", fontsize=12)
+        plt.xlabel("Maximum output signal", fontsize=10)
+        plt.ylabel("Number of input patterns", fontsize=10)
+        plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
+        plt.gca().set_facecolor('w')
+        plt.savefig(os.path.join(BASE_PATH, 'figures/threshold.png'))
+        plt.show()
+
+        # Plot the variance in output patterns
+        plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
+        plt.title("Output signal variance (difference between minimum and maximum)", fontsize=12)
+        plt.xlabel("Signal variance", fontsize=10)
+        plt.ylabel("Number of input patterns", fontsize=10)
+        plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
+        plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
+        plt.gca().set_facecolor('w')
+        plt.savefig(os.path.join(BASE_PATH, 'figures/output_signal_variance.png'))
+        plt.show()
+
