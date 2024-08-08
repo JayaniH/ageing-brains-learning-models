@@ -18,6 +18,10 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
     :param active_node_count: The number of active nodes
     :param threshold: The chosen threshold value
     :param version: The version of the learning process
+        1: Update the weight of the edges one at a time based on legacy update rule
+        2: Update the weight of the edges one at a time based on learning rate 
+        3: Update the weight of all incoming edges for one output node at once
+        4: Update the weight of all incoming edges for the 6 selected output nodes at once
     :param output_node_selection: The method used to select the output node
     :param save: If True, save the results to .csv files
     :param verbose: If True, log information and write to file
@@ -32,6 +36,7 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
 
     if verbose:
         logging.info("Starting Young learning process")
+        print("Starting Young learning process...")
 
     # Loop over each input pattern
     for pattern_index in range(valid_output.shape[1]):
@@ -40,34 +45,45 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
 
         if verbose:
             logging.info(f"Pattern {pattern_index + 1}")
+            print(f"Pattern {pattern_index + 1} of {valid_output.shape[1]}")
             
         while np.count_nonzero(young_over_th_signals[:, pattern_index]) < 6:  # While not all nodes have fired
-            if output_node_selection == 'Roulette':
-                chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
-            elif output_node_selection == 'Max':
-                # Choose the output node with the highest signal that has not fired yet
-                # Mask the fired nodes in the valid_output array
-                masked_output = valid_output[:, pattern_index].copy()
-                masked_output[young_nodes_fired[np.where(young_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
 
-                # Choose the output node with the highest signal that has not fired yet
-                chosen_output_node_index = np.argmax(masked_output)
+            # Choose the output node with the highest signal that has not fired yet
+            # Mask the fired nodes in the valid_output array
+            masked_output = valid_output[:, pattern_index].copy()
+            masked_output[young_nodes_fired[np.where(young_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
+
+            if output_node_selection == 'Roulette':
+                if version == 4:
+                    # choose 6 output nodes
+                    chosen_output_node_indices = roulette_wheel_selection(masked_output, 6)
+                else:
+                    chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            elif output_node_selection == 'Max':
+                if version == 4:
+                    chosen_output_node_indices = np.argsort(masked_output)[-6:]
+                else:
+                    # Choose the output node with the highest signal that has not fired yet
+                    chosen_output_node_index = np.argmax(masked_output)
             else:
                 raise ValueError("Invalid output node selection method")
             
             if verbose:
-                logging.info(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nSelected output index (sorted): {np.where(np.sort(valid_output[:, pattern_index])[::-1] == valid_output[chosen_output_node_index, pattern_index])[0][0]},\nloopcount: {loopcount}\n')
-                # print(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nloopcount: {loopcount}\n')
+                if version == 4:
+                    logging.info(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signals: {valid_output[chosen_output_node_indices, pattern_index]},\nSelected output indices (sorted): {np.where([np.sort(valid_output[:, pattern_index])[::-1] == valid_output[chosen_output_node_index, pattern_index] for chosen_output_node_index in chosen_output_node_indices])[0][0]},\nloopcount: {loopcount}\n')
+                else:
+                    logging.info(f'Output nodes (sorted):\n{np.sort(valid_output[:, pattern_index])[::-1]},\nSelected output signal: {valid_output[chosen_output_node_index, pattern_index]},\nSelected output index (sorted): {np.where(np.sort(valid_output[:, pattern_index])[::-1] == valid_output[chosen_output_node_index, pattern_index])[0][0]},\nloopcount: {loopcount}\n')
 
-            if chosen_output_node_index in young_nodes_fired[:, pattern_index]:
-                continue
+            # if chosen_output_node_index in young_nodes_fired[:, pattern_index]:
+            #     continue
 
-            output_signal = valid_output[chosen_output_node_index, pattern_index]
-
-            activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0] # The value is non-zero only in activated nodes as set previously
-            
+            if version in [1, 2, 3]:
+                output_signal = valid_output[chosen_output_node_index, pattern_index]
+                activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0] # The value is non-zero only in activated nodes as set previously
+                
             # choose and update an edge based on the active edges
-            if version == 1 or version == 2:
+            if version in [1, 2]:
                 candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]
 
                 chosen_edge_index = roulette_wheel_selection(candidate_edges)
@@ -94,17 +110,37 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
                 output_signal = np.sum(valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index])
                 valid_output[chosen_output_node_index, pattern_index] = output_signal
 
+            # upadate the weight of all incoming edges for the 6 selected output nodes
+            elif version == 4:
+                learning_rate = 1.5
+                output_signals = valid_output[chosen_output_node_indices, pattern_index]
+                logging.info(f'Output signals: {output_signals}')
+                for i, chosen_output_node_index in enumerate(chosen_output_node_indices):
+                    activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0]
+                    valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index] *= learning_rate
+                    output_signals[i] = np.sum(valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index])
+                    logging.info(f'Output signal {i}: {output_signals[i]}')
+                    valid_output[chosen_output_node_index, pattern_index] = output_signals[i]
+            
             else:
                 raise ValueError("Invalid version number")
 
             loopcount += 1
 
-            if output_signal >= threshold:
+            if version in [1,2,3] and output_signal >= threshold:
                 young_over_th_signals[i, pattern_index] = output_signal
                 young_nodes_fired[i, pattern_index] = chosen_output_node_index
                 i += 1
                 if verbose:
                     logging.info(f'Node fired with signal {output_signal}\n')
+            
+            elif version == 4:
+                for i, chosen_output_node_index in enumerate(chosen_output_node_indices):
+                    if output_signals[i] >= threshold:
+                        young_over_th_signals[i, pattern_index] = output_signals[i]
+                        young_nodes_fired[i, pattern_index] = chosen_output_node_index
+                        if verbose:
+                            logging.info(f'Node {i} fired with signal {output_signals[i]}')
 
         young_iteration_count[pattern_index] = loopcount
     
@@ -121,7 +157,7 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
     return young_iteration_count, young_over_th_signals, young_nodes_fired
 
 
-def execute_old_learning(valid_input, valid_output, threshold, version = 2, output_node_selection = 'Roulette', save = False):
+def execute_old_learning(valid_input, valid_output, threshold, version = 2, output_node_selection = 'Roulette', save = False, verbose = True):
     """
     Execute the Old learning process.
 
@@ -130,8 +166,13 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, outp
     :param active_node_count: The number of active nodes
     :param threshold: The chosen threshold value
     :param version: The version of the learning process
+        1: Update the weight of the edges one at a time using another incoming edge of the same output node
+        2: Update the weight of the edges one at a time using another outgoing edge of the same input node
+        3: _
+        4: Update the weight of all incoming edges for the 6 selected output nodes at once
     :param output_node_selection: The method used to select the output node
     :param save: If True, save the results to .csv files
+    :param verbose: If True, log information and write to file
 
     :return: The number of iterations for each input pattern, the signals that exceeded the threshold, the nodes that fired, and the excluded nodes
     """
@@ -141,89 +182,183 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, outp
     old_over_th_signals = np.zeros((ACTIVE_NODE_COUNT, valid_output.shape[1]))  # to store the nodes that fired
     old_nodes_fired = np.full((ACTIVE_NODE_COUNT, valid_output.shape[1]), -1)  # matrix with the index of the nodes fired
 
+    if verbose:
+        logging.info("Starting Old learning process")
+        print("Starting Old learning process...")
+    
     for pattern_index in range(valid_output.shape[1]):  # for each input pattern
         loopcount = 0  # amount of iterations
         i = 0  # counter for the nodes that fired
 
-        while np.count_nonzero(old_over_th_signals[:, pattern_index]) < 6:  # while not all nodes have fired
-            if output_node_selection == 'Roulette':
-                chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
-            elif output_node_selection == 'Max':
-                # Choose the output node with the highest signal that has not fired yet
-                # Mask the fired nodes in the valid_output array
-                masked_output = valid_output[:, pattern_index].copy()
-                masked_output[old_nodes_fired[np.where(old_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
-                masked_output[excluded_nodes[np.where(excluded_nodes[:, pattern_index] != -1), pattern_index]] = -np.inf
+        if verbose:
+            logging.info(f"Pattern {pattern_index + 1}")
+            print(f"Pattern {pattern_index + 1} of {valid_output.shape[1]}")
 
-                # Choose the output node with the highest signal that has not fired yet
-                chosen_output_node_index = np.argmax(masked_output)
+        while np.count_nonzero(old_over_th_signals[:, pattern_index]) < 6:  # while not all nodes have fired
+            # Mask the fired nodes in the valid_output array
+            masked_output = valid_output[:, pattern_index].copy()
+            masked_output[old_nodes_fired[np.where(old_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
+            masked_output[excluded_nodes[np.where(excluded_nodes[:, pattern_index] != -1), pattern_index]] = -np.inf
+
+            if output_node_selection == 'Roulette':
+                if version == 4:
+                    # choose 6 output nodes
+                    chosen_output_node_indices = roulette_wheel_selection(masked_output, 6)
+                else:
+                    chosen_output_node_index = roulette_wheel_selection(valid_output[:, pattern_index])
+            elif output_node_selection == 'Max':
+                if version == 4:
+                    chosen_output_node_indices = np.argsort(masked_output)[-6:]
+                else:
+                    # Choose the output node with the highest signal that has not fired yet
+                    chosen_output_node_index = np.argmax(masked_output)
             else:
                 raise ValueError("Invalid output node selection method")
 
-            if chosen_output_node_index in old_nodes_fired[:, pattern_index] or chosen_output_node_index in excluded_nodes[:, pattern_index]:  # if node has been previously selected, choose another one
-                continue
+            if version == 4:
+                logging.info(f'Selected output nodes: {chosen_output_node_indices}')
 
-            activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0]  # get the active nodes for the IP
-            candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]  # get the values for the active node
+                chosen_edge_indices = []
+                next_edge_indices = []
+                conflict = False
+                edge_position_counter = 1
 
-            # Choose an edge based on the active edges
-            chosen_edge_index = roulette_wheel_selection(candidate_edges)
+                for j, chosen_output_node_index in enumerate(chosen_output_node_indices):
+                    activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0]  # get the active nodes for the IP
+                    candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]
 
-            output_signal = valid_output[chosen_output_node_index, pattern_index] 
+                    chosen_edge_index = roulette_wheel_selection(candidate_edges)
+                    
+                    logging.info(f'Chosen edge index: {chosen_edge_index}')
+                   
+                    chosen_input_node_index = activated_input_node_indices[chosen_edge_index]
 
-            chosen_input_node_index = activated_input_node_indices[chosen_edge_index]
+                    if (chosen_input_node_index, chosen_output_node_index) in chosen_edge_indices or (chosen_input_node_index, chosen_output_node_index) in next_edge_indices:
+                        logging.info(f'Conflict in chosen edge: {chosen_input_node_index}, {chosen_output_node_index}. Current chosen edge indices: {chosen_edge_indices}, Current next edge indices: {next_edge_indices}')
+                        conflict = True
+                        loopcount += 1
+                        break
+                    
+                    chosen_edge_indices.append((chosen_input_node_index, chosen_output_node_index))
+                    
+                    logging.info(f'Chosen edge indices: {chosen_edge_indices}')
 
-            if version == 2:
-                candidate_edges = valid_input[chosen_input_node_index, :, pattern_index]
-                chosen_edge_index = chosen_output_node_index # the index of the chosen edge relative to the input node is the same as the output node
+                    coin_toss = np.random.randint(0, 2)
 
-            coin_toss = np.random.randint(0, 2)
-            edge_position_counter = 0
+                    candidate_edges = valid_input[chosen_input_node_index, :, pattern_index]
+                    chosen_edge_index = chosen_output_node_index
 
-            while True:
-                # Increment the counter
-                edge_position_counter += 1
+                    if coin_toss == 0:
+                        next_edge_position = (chosen_edge_index + edge_position_counter) % len(candidate_edges)
+                    else:
+                        next_edge_position = (chosen_edge_index - edge_position_counter) % len(candidate_edges)
+                    
+                    logging.info(f'Next edge position: {next_edge_position}')
 
-                # If the maximum number of iterations is reached, exclude the node and break the loop
-                if edge_position_counter == len(candidate_edges):
-                    loopcount -= (len(candidate_edges) - 1) # TODO: Check if this is correct. Why do we need to decrement the loop count?
-                    excluded_nodes[i, pattern_index] = chosen_output_node_index
-                    break
+                    if next_edge_position in old_nodes_fired[:, pattern_index] or next_edge_position in excluded_nodes[:, pattern_index]:
+                        logging.info(f'Next edge belongs to a node that has been previously selected or excluded: {next_edge_position}')
+                        conflict = True
+                        break
 
-                # Choose the direction based on the random value x
-                if coin_toss == 0:
-                    # search_array = candidate_edges
-                    # candidate_edges_circular = np.hstack((search_array, search_array))
-                    next_edge_position = (chosen_edge_index + edge_position_counter) % len(candidate_edges)
-                else:
-                    # search_array = np.flipud(candidate_edges)
-                    # candidate_edges_circular = np.hstack((search_array, search_array))
-                    next_edge_position = (chosen_edge_index - edge_position_counter) % len(candidate_edges)
+                    if (chosen_input_node_index, next_edge_position) in chosen_edge_indices or (chosen_input_node_index, next_edge_position) in next_edge_indices:
+                        logging.info(f'Conflict in next edge: {chosen_input_node_index}, {next_edge_position}. Current chosen edge indices: {chosen_edge_indices}, Current next edge indices: {next_edge_indices}')
+                        conflict = True
+                        loopcount += 1
+                        break
 
-                # chosen_edge_position = np.where(chosen_edge == search_array)[0][0]
+                    next_edge_indices.append((chosen_input_node_index, next_edge_position))
+                    logging.info(f'Next edge indices: {next_edge_indices}')
+                
+                if not conflict:
+                    for j, chosen_output_node_index in enumerate(chosen_output_node_indices):
+                        logging.info(f'Updating edge for output node {chosen_output_node_index} ({j + 1} of 6)')
+                        output_signal = valid_output[chosen_output_node_index, pattern_index]
+                        chosen_input_node_index, chosen_output_node_index = chosen_edge_indices[j]
+                        _, next_output_node_index = next_edge_indices[j]
 
-                # Select the second edge and update the sum of edges
-                # next_edge = candidate_edges_circular[chosen_edge_position + edge_position_counter]
-                next_edge = candidate_edges[next_edge_position]
+                        output_signal += valid_input[chosen_input_node_index, next_output_node_index, pattern_index]
+                        valid_output[chosen_output_node_index, pattern_index] = output_signal
+                        
+                        valid_input[chosen_input_node_index, chosen_output_node_index, pattern_index] += valid_input[chosen_input_node_index, next_output_node_index, pattern_index]
+                        valid_input[chosen_input_node_index, next_output_node_index, pattern_index] = 0
 
-                valid_input[chosen_input_node_index, chosen_output_node_index, pattern_index] += next_edge  # update the weight in the input matrix
+                        if output_signal >= threshold and np.count_nonzero(old_over_th_signals[:, pattern_index]) < 6:
+                            logging.info(f'Node {j} fired with signal {output_signal}')
+                            old_over_th_signals[i, pattern_index] = output_signal
+                            old_nodes_fired[i, pattern_index] = chosen_output_node_index
+                            i += 1
+
+                    loopcount += 1
+                    edge_position_counter += 1
+
+            elif version in [1, 2]:                                                                                                           
+                if chosen_output_node_index in old_nodes_fired[:, pattern_index] or chosen_output_node_index in excluded_nodes[:, pattern_index]:  # if node has been previously selected, choose another one
+                    continue
+
+                activated_input_node_indices = np.where(valid_input[:, chosen_output_node_index, pattern_index])[0]  # get the active nodes for the IP
+                candidate_edges = valid_input[activated_input_node_indices, chosen_output_node_index, pattern_index]  # get the values for the active node
+
+                # Choose an edge based on the active edges
+                chosen_edge_index = roulette_wheel_selection(candidate_edges)
+
+                output_signal = valid_output[chosen_output_node_index, pattern_index] 
+
+                chosen_input_node_index = activated_input_node_indices[chosen_edge_index]
 
                 if version == 2:
-                    valid_input[chosen_input_node_index, next_edge_position, pattern_index] = 0  # update the weight in the input matrix
+                    candidate_edges = valid_input[chosen_input_node_index, :, pattern_index]
+                    chosen_edge_index = chosen_output_node_index # the index of the chosen edge relative to the input node is the same as the output node
 
-                output_signal += next_edge
-                valid_output[chosen_output_node_index, pattern_index] = output_signal    # update the output value in the output matrix
+                coin_toss = np.random.randint(0, 2)
+                edge_position_counter = 0
 
-                # Increment the loop count
-                loopcount += 1
+                while True:
+                    # Increment the counter
+                    edge_position_counter += 1
 
-                # If the threshold is exceeded, record the node
-                if output_signal >= threshold:
-                    old_over_th_signals[i, pattern_index] = output_signal
-                    old_nodes_fired[i, pattern_index] = chosen_output_node_index
-                    i+=1
-                    break
-        
+                    # If the maximum number of iterations is reached, exclude the node and break the loop
+                    if edge_position_counter == len(candidate_edges):
+                        loopcount -= (len(candidate_edges) - 1) # TODO: Check if this is correct. Why do we need to decrement the loop count?
+                        excluded_nodes[i, pattern_index] = chosen_output_node_index
+                        break
+
+                    # Choose the direction based on the random value x
+                    if coin_toss == 0:
+                        # search_array = candidate_edges
+                        # candidate_edges_circular = np.hstack((search_array, search_array))
+                        next_edge_position = (chosen_edge_index + edge_position_counter) % len(candidate_edges)
+                    else:
+                        # search_array = np.flipud(candidate_edges)
+                        # candidate_edges_circular = np.hstack((search_array, search_array))
+                        next_edge_position = (chosen_edge_index - edge_position_counter) % len(candidate_edges)
+
+                    # chosen_edge_position = np.where(chosen_edge == search_array)[0][0]
+
+                    # Select the second edge and update the sum of edges
+                    # next_edge = candidate_edges_circular[chosen_edge_position + edge_position_counter]
+                    next_edge = candidate_edges[next_edge_position]
+
+                    valid_input[chosen_input_node_index, chosen_output_node_index, pattern_index] += next_edge  # update the weight in the input matrix
+
+                    if version == 2:
+                        valid_input[chosen_input_node_index, next_edge_position, pattern_index] = 0  # update the weight in the input matrix
+
+                    output_signal += next_edge
+                    valid_output[chosen_output_node_index, pattern_index] = output_signal    # update the output value in the output matrix
+
+                    # Increment the loop count
+                    loopcount += 1
+
+                    # If the threshold is exceeded, record the node
+                    if output_signal >= threshold:
+                        old_over_th_signals[i, pattern_index] = output_signal
+                        old_nodes_fired[i, pattern_index] = chosen_output_node_index
+                        i+=1
+                        break
+
+            else:
+                raise ValueError("Invalid version number")
+
         old_iteration_count[pattern_index] = loopcount
 
     if save:
@@ -255,7 +390,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     maximum_iterations = max([max(data) for data in learning_data])
 
     # Calculate histogram for each dataset
-    histograms = [np.histogram(data, bins=np.arange(6, max(maximum_iterations, 10) + 2), range=(6, max(maximum_iterations, 10) + 1))[0] for data in learning_data]
+    histograms = [np.histogram(data, bins=np.arange(1, max(maximum_iterations, 10) + 2), range=(1, max(maximum_iterations, 10) + 1))[0] for data in learning_data]
 
     maximum_count = max([max(histogram) for histogram in histograms])
     
@@ -283,7 +418,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     plt.ylabel("Valid input patterns", fontsize=10)
     plt.ylim(0, maximum_count + (maximum_count * 0.1))
     plt.title("Number of Iterations for Young and Old learning", fontsize=12)
-    plt.xticks(x_positions + bar_width / 2 if grouped else x_positions, [str(i) for i in range(6, len(histograms[0]) + 6)], rotation=45)
+    plt.xticks(x_positions + bar_width / 2 if grouped else x_positions, [str(i) for i in range(1, len(histograms[0]) + 1)], rotation=45)
     plt.legend(fontsize=13)
 
     # Add text annotations
