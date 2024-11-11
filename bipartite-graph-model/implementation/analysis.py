@@ -2,6 +2,7 @@ from collections import Counter
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from constants import BASE_PATH
 
@@ -282,22 +283,133 @@ def check_nodes_fired_corresponds_to_output_patterns(nodes_fired, output_pattern
             print(f"Nodes fired: {nodes_fired[:, i].astype(int)}\n")
 
 
-def main():
-    iteration_count_analysis(3)
-    counts, patterns = count_outputs_within_margin(0.2405, np.loadtxt(os.path.join(BASE_PATH, 'data/valid_output_signals(thresholded).csv'), delimiter=','), margin=0.09, count_threshold=6, save=True)
-    plot_outputs_within_margin(counts, margin=0.09)
+# statistical analysis of model (input weights)
+def analyze_input_nodes(weights):
 
-    common_nodes_count = count_common_nodes(np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_nodes_fired.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_output_nodes_fired.csv'), delimiter=','))
-    plot_common_nodes(common_nodes_count)
-    get_iteration_count_for_similar_output_patterns(common_nodes_count, np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_iteration_count.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_iteration_count.csv'), delimiter=','), threshold=5)
-    plot_similar_output_patterns(common_nodes_count, np.loadtxt(os.path.join(BASE_PATH, 'data/valid_input_patterns(thresholded).csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_patterns.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_output_patterns.csv'), delimiter=','), threshold=5)
+    weights = weights.T
 
-    identical_patterns_young = count_identical_output_patterns(np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_nodes_fired.csv'), delimiter=','), tag="young")
-    identical_patterns_old = count_identical_output_patterns(np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_output_nodes_fired.csv'), delimiter=','), tag="old")
-    plot_output_pattern_commonality(identical_patterns_young, identical_patterns_old)
+    # box plot of input weights
+    plt.boxplot(weights, patch_artist=True, showmeans=True)
+    plt.xlabel("Input node")
+    plt.ylabel("Weight")
+    plt.title("Box plot of input weights in the model")
 
-    check_nodes_fired_corresponds_to_output_patterns(np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_nodes_fired.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_patterns.csv'), delimiter=','))
+    # plt.savefig(os.path.join(BASE_PATH, 'figures/input_nodes_boxplot.png'))
+    plt.show()
+
+    # create data frame for summary statistics
+    summary_statistics = pd.DataFrame({
+        'Node': np.arange(1, weights.shape[1] + 1),
+        'Mean': np.mean(weights, axis=0),
+        'Std': np.std(weights, axis=0),
+        'Min': np.min(weights, axis=0),
+        'Max': np.max(weights, axis=0),
+        'Median': np.median(weights, axis=0),
+        'Sum': np.sum(weights, axis=0)
+    })
+    print("Summary statistics for input nodes:")
+    print(summary_statistics)
+    summary_statistics.to_csv(os.path.join(BASE_PATH, 'data/input_nodes_summary_statistics.csv'), index=False)
     
 
+    # box plot for all input weights
+    plt.boxplot(weights.flatten())
+    plt.ylabel("Weight")
+    plt.title("Box plot of all input weights in the model")
+
+    # plt.savefig(os.path.join(BASE_PATH, 'figures/input_weights_boxplot_all.png'))
+    plt.show()
+
+    # create data frame for overall summary statistics
+    overall_summary = pd.DataFrame({
+        'Mean': np.mean(weights.flatten()),
+        'Std': np.std(weights.flatten()),
+        'Min': np.min(weights.flatten()),
+        'Max': np.max(weights.flatten()),
+        'Median': np.median(weights.flatten()),
+        'Sum': np.sum(weights.flatten())
+    }, index=[0])
+    print("Overall summary statistics for weights:")
+    print(overall_summary)
+    overall_summary.to_csv(os.path.join(BASE_PATH, 'data/weights_overall_summary.csv'), index=False)
+
+    return
+
+def analyze_output_nodes(weights, mode="complete"):
+
+    if mode == "patterns":
+        # when analysing output nodes for each pattern 24/30 weights are zero which biases the box plot
+        # remove zeores
+        weights = weights[weights != 0].reshape(6, 30)
+        print(weights.shape)
+
+    # box plot of output nodes
+    plt.boxplot(weights, patch_artist=True, showmeans=True)
+    plt.xlabel("Output node")
+    plt.ylabel("Weight")
+    plt.title("Box plot of output nodes in the model")
+
+    # plt.savefig(os.path.join(BASE_PATH, 'figures/output_nodes_boxplot.png'))
+    plt.show()
+
+    # summary statistics for each output node
+    mean_per_node = np.mean(weights, axis=0)
+    std_per_node = np.std(weights, axis=0)
+    min_per_node = np.min(weights, axis=0)
+    max_per_node = np.max(weights, axis=0)
+    sum_per_node = np.sum(weights, axis=0)
+
+    # create data frame for summary statistics
+    summary_statistics = pd.DataFrame({
+        'Node': np.arange(1, weights.shape[1] + 1),
+        'Mean': mean_per_node,
+        'Std': std_per_node,
+        'Min': min_per_node,
+        'Max': max_per_node,
+        'Sum': sum_per_node
+    })
+    print("Summary statistics for output nodes")
+    print(summary_statistics)
+    summary_statistics.to_csv(os.path.join(BASE_PATH, 'data/output_nodes_summary_statistics.csv'), index=False)
+
+    # box plot for all output nodes
+    plt.boxplot(weights.flatten())
+    plt.ylabel("Weight")
+    plt.title("Box plot of all output nodes in the model")
+
+    # plt.savefig(os.path.join(BASE_PATH, 'figures/output_nodes_boxplot_all.png'))
+    plt.show()
+
+    return
+
+
+def main():
+    # iteration_count_analysis(3)
+    # counts, patterns = count_outputs_within_margin(0.2405, np.loadtxt(os.path.join(BASE_PATH, 'data/valid_output_signals(thresholded).csv'), delimiter=','), margin=0.09, count_threshold=6, save=True)
+    # plot_outputs_within_margin(counts, margin=0.09)
+
+    # common_nodes_count = count_common_nodes(np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_nodes_fired.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_output_nodes_fired.csv'), delimiter=','))
+    # plot_common_nodes(common_nodes_count)
+    # get_iteration_count_for_similar_output_patterns(common_nodes_count, np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_iteration_count.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_iteration_count.csv'), delimiter=','), threshold=5)
+    # plot_similar_output_patterns(common_nodes_count, np.loadtxt(os.path.join(BASE_PATH, 'data/valid_input_patterns(thresholded).csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_patterns.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_output_patterns.csv'), delimiter=','), threshold=5)
+
+    # identical_patterns_young = count_identical_output_patterns(np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_nodes_fired.csv'), delimiter=','), tag="young")
+    # identical_patterns_old = count_identical_output_patterns(np.loadtxt(os.path.join(BASE_PATH, 'results/8/old_output_nodes_fired.csv'), delimiter=','), tag="old")
+    # plot_output_pattern_commonality(identical_patterns_young, identical_patterns_old)
+
+    # check_nodes_fired_corresponds_to_output_patterns(np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_nodes_fired.csv'), delimiter=','), np.loadtxt(os.path.join(BASE_PATH, 'results/8/young_output_patterns.csv'), delimiter=','))
+
+    input_weights = np.loadtxt(os.path.join(BASE_PATH, 'data/inputs_normal_dis.csv'), delimiter=',')
+    analyze_input_nodes(input_weights)
+    analyze_output_nodes(input_weights)
+
+    valid_input = np.loadtxt(os.path.join(BASE_PATH, 'data/valid_input_weights(thresholded).csv'), delimiter=',').reshape(30, 30, -1)
+    # get analysis for each pattern
+    for i in range(valid_input.shape[2]):
+        print(f"Pattern {i + 1}")
+        analyze_input_nodes(valid_input[:, :, i])
+        analyze_output_nodes(valid_input[:, :, i], mode="patterns")
+
+    
 if __name__ == "__main__":
     main()
