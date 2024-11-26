@@ -12,11 +12,11 @@ def main():
     valid_output = np.loadtxt(os.path.join(BASE_PATH, 'data/valid_output_signals(thresholded).csv'), delimiter=',')
 
     # Young learning
-    young_iteration_count, young_over_th_signals, young_nodes_fired = execute_young_learning(valid_input, valid_output, threshold, version=4, output_node_selection='Roulette', save=True, verbose=True)
+    young_iteration_count, young_over_th_signals, young_nodes_fired = execute_young_learning(valid_input, valid_output, threshold, version=3, output_node_selection='Roulette', save=True, verbose=True)
     print("Young learning iterations:", young_iteration_count)
 
     # Old learning
-    old_iteration_count, old_over_th_signals, old_nodes_fired, excluded_nodes = execute_old_learning(valid_input, valid_output, threshold, version=4, output_node_selection='Roulette', save=True)
+    old_iteration_count, old_over_th_signals, old_nodes_fired, excluded_nodes = execute_old_learning(valid_input, valid_output, threshold, version=2, output_node_selection='Roulette', save=True)
     print("Old learning iterations:", old_iteration_count)
 
     learning_iterations = [young_iteration_count, old_iteration_count]
