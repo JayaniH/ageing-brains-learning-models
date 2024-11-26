@@ -47,7 +47,7 @@ def execute_young_learning(valid_input, valid_output, threshold, version = 2, ou
             logging.info(f"Pattern {pattern_index + 1}")
             print(f"Pattern {pattern_index + 1} of {valid_output.shape[1]}")
             
-        while np.count_nonzero(young_over_th_signals[:, pattern_index]) < 6:  # While not all nodes have fired
+        while np.count_nonzero(young_over_th_signals[:, pattern_index]) < ACTIVE_NODE_COUNT:
 
             # Choose the output node with the highest signal that has not fired yet
             # Mask the fired nodes in the valid_output array
@@ -194,7 +194,7 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, outp
             logging.info(f"Pattern {pattern_index + 1}")
             print(f"Pattern {pattern_index + 1} of {valid_output.shape[1]}")
 
-        while np.count_nonzero(old_over_th_signals[:, pattern_index]) < 6:  # while not all nodes have fired
+        while np.count_nonzero(old_over_th_signals[:, pattern_index]) < ACTIVE_NODE_COUNT:
             # Mask the fired nodes in the valid_output array
             masked_output = valid_output[:, pattern_index].copy()
             masked_output[old_nodes_fired[np.where(old_nodes_fired[:, pattern_index] != -1), pattern_index]] = -np.inf
@@ -307,6 +307,7 @@ def execute_old_learning(valid_input, valid_output, threshold, version = 2, outp
 
                 if version == 2:
                     candidate_edges = valid_input[chosen_input_node_index, :, pattern_index]
+                    # candidate_edges = np.where(valid_input[chosen_input_node_index, :, pattern_index] != 0)[0]
                     chosen_edge_index = chosen_output_node_index # the index of the chosen edge relative to the input node is the same as the output node
 
                 coin_toss = np.random.randint(0, 2)
@@ -390,7 +391,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     maximum_iterations = max([max(data) for data in learning_data])
 
     # Calculate histogram for each dataset
-    histograms = [np.histogram(data, bins=np.arange(1, max(maximum_iterations, 10) + 2), range=(1, max(maximum_iterations, 10) + 1))[0] for data in learning_data]
+    histograms = [np.histogram(data, bins=np.arange(ACTIVE_NODE_COUNT, max(maximum_iterations, 10) + 2), range=(ACTIVE_NODE_COUNT, max(maximum_iterations, 10) + 1))[0] for data in learning_data]
 
     maximum_count = max([max(histogram) for histogram in histograms])
     
@@ -418,7 +419,7 @@ def plot_learning_histograms(learning_data, labels, colors, grouped=True):
     plt.ylabel("Valid input patterns", fontsize=10)
     plt.ylim(0, maximum_count + (maximum_count * 0.1))
     plt.title("Number of Iterations for Young and Old learning", fontsize=12)
-    plt.xticks(x_positions + bar_width / 2 if grouped else x_positions, [str(i) for i in range(1, len(histograms[0]) + 1)], rotation=45)
+    plt.xticks(x_positions + bar_width / 2 if grouped else x_positions, [str(i) for i in range(ACTIVE_NODE_COUNT, len(histograms[0]) + ACTIVE_NODE_COUNT)], rotation=45)
     plt.legend(fontsize=13)
 
     # Add text annotations
