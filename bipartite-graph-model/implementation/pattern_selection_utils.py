@@ -77,9 +77,28 @@ def get_threshold(th_values, output, min_count = 125000, max_count = 150000):
         chosen_index = valid_indices[np.argmax(valid_counts[valid_indices])]
         threshold = th_values[chosen_index]
         return threshold
+    
+
+def get_threshold_open(output, percentage = 0.25):
+    """
+    Determine the threshold value that results in a desired percentage of valid input patterns
+
+    :param output: The signal reaching the output nodes for each input pattern
+    :param percentage: The desired percentage of valid input patterns
+
+    :return: The threshold value that results in the desired percentage of valid input patterns
+    """
+
+    # Calculate the maximum signal for each input pattern
+    max_signals = np.max(output, axis=0)
+
+    # Determine the threshold value that results in the desired percentage of valid input patterns
+    threshold = np.percentile(max_signals, 100 * percentage)
+
+    return threshold
 
 
-def get_valid_inputs_and_outputs(threshold, input, input_patterns, output, save = False):
+def get_valid_inputs_and_outputs(threshold, input, input_patterns, output, save = False, outfile_suffix = ''):
     """
     Determine the valid input patterns based on the chosen threshold
 
@@ -101,9 +120,9 @@ def get_valid_inputs_and_outputs(threshold, input, input_patterns, output, save 
     valid_input = input[:, :, valid_input_pattern_indices]
 
     if save:
-        np.savetxt(os.path.join(BASE_PATH, 'data/valid_input_weights(thresholded).csv'), valid_input.reshape(-1, valid_input.shape[-1]), delimiter=",")
-        np.savetxt(os.path.join(BASE_PATH, 'data/valid_input_patterns(thresholded).csv'), valid_input_patterns, delimiter=",", fmt='%d')
-        np.savetxt(os.path.join(BASE_PATH, 'data/valid_output_signals(thresholded).csv'), valid_output, delimiter=",", fmt='%.4f')
+        np.savetxt(os.path.join(BASE_PATH, f'data/valid_input_weights(thresholded){outfile_suffix}.csv'), valid_input.reshape(-1, valid_input.shape[-1]), delimiter=",")
+        np.savetxt(os.path.join(BASE_PATH, f'data/valid_input_patterns(thresholded){outfile_suffix}.csv'), valid_input_patterns, delimiter=",", fmt='%d')
+        np.savetxt(os.path.join(BASE_PATH, f'data/valid_output_signals(thresholded){outfile_suffix}.csv'), valid_output, delimiter=",", fmt='%.4f')
 
     return valid_input_patterns, valid_input, valid_output
 
@@ -123,7 +142,7 @@ def get_output_statistics(valid_output):
 
     return variance, avg_variance, sd_variance
 
-def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance, subplots = False):
+def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance, subplots = False, file_suffix = ''):
     """
     Plot the maximum signal reaching the output nodes for each input pattern and the variance in the output patterns
     :param output: The signal reaching the output nodes for each input pattern
@@ -162,21 +181,21 @@ def plot_signal_statistics(output, threshold, variance, avg_variance, sd_varianc
         plt.gca().set_facecolor('w')
 
         plt.tight_layout()
-        # plt.savefig(os.path.join(BASE_PATH, '/figures/thresholds_and_variance.png'))
+        # plt.savefig(os.path.join(BASE_PATH, f'/figures/thresholds_and_variance{file_suffix}.png'))
         plt.show()
 
     else:
         # Plotting the thresholds - separate plots
         # Plot maximum signal reaching output nodes
         plt.hist(graph, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
-        plt.xlim(0.2, 0.32)
+        # plt.xlim(0.2, 0.32)
         plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
         plt.title("Maximum signal reaching output nodes", fontsize=12)
         plt.xlabel("Maximum output signal", fontsize=10)
         plt.ylabel("Number of input patterns", fontsize=10)
         plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
         plt.gca().set_facecolor('w')
-        plt.savefig(os.path.join(BASE_PATH, 'figures/threshold.png'))
+        plt.savefig(os.path.join(BASE_PATH, f'figures/threshold{file_suffix}.png'))
         plt.show()
 
         # Plot the variance in output patterns
@@ -187,6 +206,6 @@ def plot_signal_statistics(output, threshold, variance, avg_variance, sd_varianc
         plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
         plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
         plt.gca().set_facecolor('w')
-        plt.savefig(os.path.join(BASE_PATH, 'figures/output_signal_variance.png'))
+        # plt.savefig(os.path.join(BASE_PATH, f'figures/output_signal_variance{file_suffix}.png'))
         plt.show()
 
