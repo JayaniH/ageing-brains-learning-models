@@ -9,7 +9,11 @@ def roulette_wheel_selection(probabilities, n=1):
     :return: The selected index.
     """
     # Replace negative probabilities with zeros
-    probabilities = np.maximum(probabilities, 0)
+    # probabilities = np.maximum(probabilities, 0)
+
+    # Scale negative probabilities to positive
+    if np.min(probabilities) < 0:
+        probabilities = probabilities - np.min(probabilities) + 1e-6 # Add a small value to prevent zero probabilities
 
     # Normalize probabilities (if not already normalized)
     total_sum = np.sum(probabilities)
