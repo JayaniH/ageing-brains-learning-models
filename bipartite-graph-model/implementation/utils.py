@@ -1,11 +1,12 @@
 import numpy as np
 
-def roulette_wheel_selection(probabilities, n=1):
+def roulette_wheel_selection(probabilities, n=1, inverse=False):
     """
     Selects an index based on the given probabilities using the roulette wheel selection method.
 
     :param probabilities: The probabilities of each index.
     :param n: The number of indices to select.
+    :param inverse: Whether to use inverse probabilities for selection.
     :return: The selected index.
     """
     # Replace negative probabilities with zeros
@@ -14,6 +15,10 @@ def roulette_wheel_selection(probabilities, n=1):
     # Scale negative probabilities to positive
     if np.min(probabilities) < 0:
         probabilities = probabilities - np.min(probabilities) + 1e-6 # Add a small value to prevent zero probabilities
+
+    # Invert probabilities if needed
+    if inverse:
+        probabilities = 1 / probabilities
 
     # Normalize probabilities (if not already normalized)
     total_sum = np.sum(probabilities)
