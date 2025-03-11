@@ -2,6 +2,7 @@ import os
 import numpy as np
 from itertools import combinations
 import matplotlib.pyplot as plt
+import pandas as pd
 from constants import BASE_PATH, ACTIVE_NODE_COUNT, TOTAL_NODE_COUNT
 
 def get_input_and_output_patterns(initial_weights):
@@ -18,14 +19,12 @@ def get_input_and_output_patterns(initial_weights):
     # Generate all combinations of active nodes
     active_combinations = list(combinations(range(1, TOTAL_NODE_COUNT + 1), ACTIVE_NODE_COUNT))
 
-    print("Number of input patterns:", len(active_combinations))
-
     # Create a matrix of input patterns
     input_patterns = np.zeros((TOTAL_NODE_COUNT, len(active_combinations)))
 
     # Define the dimensions of the input matrix
-    input = np.zeros((TOTAL_NODE_COUNT, TOTAL_NODE_COUNT, len(active_combinations)))
-    output = np.zeros((TOTAL_NODE_COUNT, len(active_combinations)))
+    weights = np.zeros((TOTAL_NODE_COUNT, TOTAL_NODE_COUNT, len(active_combinations)))
+    outputs = np.zeros((TOTAL_NODE_COUNT, len(active_combinations)))
 
     # Set active nodes to 1 in each input pattern
     for i in range(len(active_combinations)):
@@ -35,17 +34,17 @@ def get_input_and_output_patterns(initial_weights):
     for i in range(len(active_combinations)):
         for j in range(TOTAL_NODE_COUNT):
             if input_patterns[j, i] == 1:  # If the node fires for this pattern
-                input[j, :, i] = initial_weights[j, :]
+                weights[j, :, i] = initial_weights[j, :]
 
     # Determine the signal reaching the output nodes for each input pattern
     for i in range(len(active_combinations)):
         for j in range(TOTAL_NODE_COUNT):
-            output[j, i] = np.sum(input[:, j, i])
+            outputs[j, i] = np.sum(input[:, j, i])
     
-    return input_patterns, input, output
+    return input_patterns, weights, outputs
 
 
-def get_threshold(th_values, output, min_count = 125000, max_count = 150000):
+def select_threshold(th_values, output, min_count = 125000, max_count = 150000):
     """
     Determine the threshold value that results in a desired number of valid input patterns
 
@@ -79,7 +78,7 @@ def get_threshold(th_values, output, min_count = 125000, max_count = 150000):
         return threshold
     
 
-def get_threshold_open(output, percentage = 0.25):
+def find_threshold_open(output, percentage = 0.25):
     """
     Determine the threshold value that results in a desired percentage of valid input patterns
 
@@ -98,6 +97,92 @@ def get_threshold_open(output, percentage = 0.25):
     return threshold
 
 
+def search_threshold_with_ref(output, current_threshold=0.2405, target_count=137017, tol=1e-6, count_tol=0.20, step=1e-9):
+    """
+    Incrementally adjust the threshold starting from current_threshold, moving in small steps 
+    until the valid pattern count is within 5% of target_count, or the threshold change 
+    exceeds tol. 
+    
+    In addition to returning the calibrated threshold, the function also returns the valid pattern count.
+    
+    :param output: The signal reaching the output nodes for each input pattern
+    :param current_threshold: The original threshold value (default 0.2405)
+    :param target_count: The expected valid pattern count (default 317017)
+    :param tol: The maximum allowed change in threshold from current_threshold (default 1e-6)
+    :param step: The incremental step size for adjusting the threshold (default 1e-7)
+    :return: A tuple (calibrated_threshold, valid_count) if found within tol, otherwise (None, None).
+    """
+    
+    # Compute the maximum signal for each input pattern
+    max_signals = np.max(output, axis=0)
+    print(f"Max signals: {max_signals}")
+    
+    # Define the acceptable valid count range (5% of target_count)
+    lower_bound = np.floor(target_count * (1 - count_tol))
+    upper_bound = np.ceil(target_count * (1 + count_tol))
+
+    print(f"Target count: {target_count}, Lower bound: {lower_bound}, Upper bound: {upper_bound}")
+
+    # Define the endpoints of the allowed tolerance window
+    lower_threshold = current_threshold - tol
+    upper_threshold = current_threshold + tol
+
+    # Endpoints of the valid count for the tolerance window
+    valid_count_lower = np.sum(max_signals <= lower_threshold)
+    valid_count_upper = np.sum(max_signals <= upper_threshold)
+
+    valid_count_current = np.sum(max_signals <= current_threshold)
+
+    print(f"Current valid count: {valid_count_current}, Lower valid count: {valid_count_lower}, Upper valid count: {valid_count_upper}")
+
+            # Create a dataframe with the required information
+    data = {
+        'threshold_tolerance': [tol],
+        'lower_th': [lower_threshold],
+        'upper_th': [upper_threshold],
+        'valid_count_tolerance_%': [count_tol*100],
+        'lower_bound': [lower_bound],
+        'upper_bound': [upper_bound],
+        'initial_valid_count': [valid_count_current],
+        'valid_count_lower': [valid_count_lower],
+        'valid_count_upper': [valid_count_upper],
+        'final_threshold': [current_threshold],
+        'final_valid_count': [valid_count_current]
+    }
+    df = pd.DataFrame(data)
+    
+    # Early termination: if both endpoints yield counts that are either both too low or both too high,
+    # then no threshold within the tol window can bring the count into the acceptable range.
+    if (valid_count_lower < lower_bound and valid_count_upper < lower_bound) or (valid_count_lower > upper_bound and valid_count_upper > upper_bound):
+        print("No threshold within the tolerance window can bring the count into the acceptable range.")
+        df.loc[0, 'final_threshold'],  df.loc[0, 'final_valid_count'] = np.nan, np.nan
+        return None, None, df
+
+    new_threshold = current_threshold
+    valid_count = valid_count_current
+
+    # If current valid count is too low increase the threshold
+    if valid_count_current < target_count:
+        # Incrementally increase the threshold until it exceeds the upper endpoint.
+        while valid_count < target_count and new_threshold <= upper_threshold:
+            new_threshold += step
+            valid_count = np.sum(max_signals <= new_threshold)
+        df.loc[0, 'final_threshold'],  df.loc[0, 'final_valid_count'] = new_threshold, valid_count
+        return new_threshold, valid_count, df
+            
+    elif valid_count_current > target_count:
+        # Incrementally decrease the threshold until it falls below the lower endpoint.
+        while valid_count > target_count and new_threshold >= lower_threshold:
+            new_threshold -= step
+            valid_count = np.sum(max_signals <= new_threshold)
+        df.loc[0, 'final_threshold'],  df.loc[0, 'final_valid_count'] = new_threshold, valid_count
+        return new_threshold, valid_count, df
+
+    # If no acceptable threshold is found within the allowed tolerance, abandon the search.
+    df.loc[0, 'final_threshold'],  df.loc[0, 'final_valid_count'] = np.nan, np.nan
+    return None, None, df
+
+
 def get_valid_inputs_and_outputs(threshold, input, input_patterns, output, save = False, outfile_suffix = ''):
     """
     Determine the valid input patterns based on the chosen threshold
@@ -113,7 +198,6 @@ def get_valid_inputs_and_outputs(threshold, input, input_patterns, output, save 
 
     # Calculate the valid input pattern indices based on the chosen threshold
     valid_input_pattern_indices = np.where(np.max(output, axis=0) <= threshold)[0]
-    print("Number of valid input patterns:", len(valid_input_pattern_indices))
 
     valid_input_patterns = input_patterns[:, valid_input_pattern_indices]
     valid_output = output[:, valid_input_pattern_indices]
@@ -142,7 +226,8 @@ def get_output_statistics(valid_output):
 
     return variance, avg_variance, sd_variance
 
-def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance, subplots = False, file_suffix = ''):
+
+def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance):
     """
     Plot the maximum signal reaching the output nodes for each input pattern and the variance in the output patterns
     :param output: The signal reaching the output nodes for each input pattern
@@ -152,60 +237,28 @@ def plot_signal_statistics(output, threshold, variance, avg_variance, sd_varianc
     :param sd_variance: The standard deviation of the variance in the output patterns
     """
 
-    graph = np.max(output, axis=0)  # Maximum signal reaching each of the nodes for a given IP
+    max_outputs = np.max(output, axis=0)  # Maximum signal reaching each of the nodes for a given IP
 
-    # Plotting the thresholds - subplots
-    if subplots:
+    # Plot maximum signal reaching output nodes
+    plt.hist(max_outputs, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
+    # plt.xlim(0.2, 0.32)
+    plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
+    plt.title("Maximum signal reaching output nodes", fontsize=12)
+    plt.xlabel("Maximum output signal", fontsize=10)
+    plt.ylabel("Number of input patterns", fontsize=10)
+    plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
+    plt.gca().set_facecolor('w')
+    plt.savefig(os.path.join(BASE_PATH, f'figures/threshold.png'), dpi=300)
+    plt.show()
 
-        plt.figure(figsize=(12, 6))
-
-        # Plot maximum signal reaching output nodes
-        plt.subplot(1, 2, 1)
-        plt.hist(graph, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
-        plt.xlim(0.2, 0.32)
-        plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
-        plt.title("Maximum signal reaching the output nodes", fontsize=12)
-        plt.xlabel("Maximum output signal", fontsize=10)
-        plt.ylabel("Number of input patterns", fontsize=10)
-        plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
-        plt.gca().set_facecolor('w')
-
-        # Plot the variance in output patterns
-        plt.subplot(1, 2, 2)
-        plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
-        plt.title("Output signal variance (difference between minimum and maximum)", fontsize=12)
-        plt.xlabel("Signal variance", fontsize=10)
-        plt.ylabel("Number of input patterns", fontsize=10)
-        plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
-        plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
-        plt.gca().set_facecolor('w')
-
-        plt.tight_layout()
-        # plt.savefig(os.path.join(BASE_PATH, f'/figures/thresholds_and_variance{file_suffix}.png'))
-        plt.show()
-
-    else:
-        # Plotting the thresholds - separate plots
-        # Plot maximum signal reaching output nodes
-        plt.hist(graph, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
-        # plt.xlim(0.2, 0.32)
-        plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
-        plt.title("Maximum signal reaching output nodes", fontsize=12)
-        plt.xlabel("Maximum output signal", fontsize=10)
-        plt.ylabel("Number of input patterns", fontsize=10)
-        plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
-        plt.gca().set_facecolor('w')
-        plt.savefig(os.path.join(BASE_PATH, f'figures/threshold{file_suffix}.png'))
-        plt.show()
-
-        # Plot the variance in output patterns
-        plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
-        plt.title("Output signal variance (difference between minimum and maximum)", fontsize=12)
-        plt.xlabel("Signal variance", fontsize=10)
-        plt.ylabel("Number of input patterns", fontsize=10)
-        plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
-        plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
-        plt.gca().set_facecolor('w')
-        # plt.savefig(os.path.join(BASE_PATH, f'figures/output_signal_variance{file_suffix}.png'))
-        plt.show()
+    # Plot the variance in output patterns
+    plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
+    plt.title("Output signal variance (difference between minimum and maximum)", fontsize=12)
+    plt.xlabel("Signal variance", fontsize=10)
+    plt.ylabel("Number of input patterns", fontsize=10)
+    plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
+    plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
+    plt.gca().set_facecolor('w')
+    plt.savefig(os.path.join(BASE_PATH, f'figures/output_signal_variance.png'), dpi=300)
+    plt.show()
 

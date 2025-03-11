@@ -1,7 +1,0 @@
-{
-    "input_patterns_file" : "data/main/valid_input_patterns(thresholded).csv",
-    "initial_weights_file" : "data/original_data/inputs_normal_dis.csv",
-    "random_learned_weights_file" : "data/main/random_learned_weights.csv",
-    "rw_learned_weights_file" : "data/main/rw_learned_weights.csv",
-    "pattern_learned_weights_file" : "data/main/pattern_learned_weights.csv"
-}
