@@ -1,12 +1,12 @@
-from itertools import combinations
-import json
 import os
-from matplotlib import pyplot as plt
+import json
 import numpy as np
 import pandas as pd
+from itertools import combinations
+from matplotlib import pyplot as plt
 from constants import ACTIVE_NODE_COUNT, BASE_PATH, TOTAL_NODE_COUNT
 
-def get_input_and_output_patterns(initial_weights):
+def get_all_input_and_output_patterns(initial_weights):
     """
     Generate input patterns and the corresponding output signals for a given set of initial weights
 
@@ -14,7 +14,7 @@ def get_input_and_output_patterns(initial_weights):
     :param total_node_count: The total number of nodes in the network
     :param active_node_count: The number of active nodes in each input pattern
 
-    :return: The matrix of input patterns, the input matrix, and the output signals
+    :return: The matrix of input patterns, the weights for each input pattern, and the output signals
     """
 
     # Generate all combinations of active nodes
@@ -40,17 +40,45 @@ def get_input_and_output_patterns(initial_weights):
     # Determine the signal reaching the output nodes for each input pattern
     for i in range(len(active_combinations)):
         for j in range(TOTAL_NODE_COUNT):
-            outputs[j, i] = np.sum(input[:, j, i])
+            outputs[j, i] = np.sum(weights[:, j, i])
     
     return input_patterns, weights, outputs
 
 
-def select_threshold(th_values, output, min_count = 125000, max_count = 150000):
+def filter_pattern_weights(initial_weights, input_patterns):
+    """
+    Filter the weights corresponding output signals for a given set of input patterns
+
+    :param initial_weights: The initial weights of the network
+    :param input_patterns: The matrix of input patterns
+
+    :return: The weights for each input pattern and the output signals
+    """
+
+    # Define the dimensions of the input matrix
+    weights = np.zeros((TOTAL_NODE_COUNT, TOTAL_NODE_COUNT, input_patterns.shape[1]))
+    outputs = np.zeros((TOTAL_NODE_COUNT, input_patterns.shape[1]))
+
+    # Assign the weights to the input patterns
+    for i in range(input_patterns.shape[1]):
+        for j in range(TOTAL_NODE_COUNT):
+            if input_patterns[j, i] == 1:  # If the node fires for this pattern
+                weights[j, :, i] = initial_weights[j, :]
+
+    # Determine the signal reaching the output nodes for each input pattern
+    for i in range(input_patterns.shape[1]):
+        for j in range(TOTAL_NODE_COUNT):
+            outputs[j, i] = np.sum(weights[:, j, i])
+    
+    return weights, outputs
+
+
+def select_threshold(thresholds, outputs, min_count = 125000, max_count = 150000):
     """
     Determine the threshold value that results in a desired number of valid input patterns
 
-    :param th_values: The threshold values to test
-    :param output: The signal reaching the output nodes for each input pattern
+    :param thresholds: The threshold values to test
+    :param outputs: The signal reaching the output nodes for each input pattern
     :param min_count: The minimum number of valid input patterns
     :param max_count: The maximum number of valid input patterns
 
@@ -58,13 +86,13 @@ def select_threshold(th_values, output, min_count = 125000, max_count = 150000):
     """
     
     # Calculate the maximum signal for each input pattern
-    max_signals = np.max(output, axis=0)
+    max_signals = np.max(outputs, axis=0)
 
     # Initialize array to store the count of valid input patterns for each threshold
-    valid_counts = np.zeros(len(th_values))
+    valid_counts = np.zeros(len(thresholds))
 
     # Determine the count of valid input patterns for each threshold
-    for i, th_value in enumerate(th_values):
+    for i, th_value in enumerate(thresholds):
         valid_counts[i] = np.sum(max_signals <= th_value)
 
     # Find the index of the first threshold value that falls within the desired range
@@ -75,22 +103,22 @@ def select_threshold(th_values, output, min_count = 125000, max_count = 150000):
     else:
         # Choose the threshold with the most valid input patterns
         chosen_index = valid_indices[np.argmax(valid_counts[valid_indices])]
-        threshold = th_values[chosen_index]
+        threshold = thresholds[chosen_index]
         return threshold
     
 
-def find_threshold_open(output, percentage = 0.25):
+def find_threshold(outputs, percentage = 0.25):
     """
-    Determine the threshold value that results in a desired percentage of valid input patterns
+    Determine the threshold that results in a desired percentage of valid input patterns
 
-    :param output: The signal reaching the output nodes for each input pattern
+    :param outputs: The signal reaching the output nodes for each input pattern
     :param percentage: The desired percentage of valid input patterns
 
     :return: The threshold value that results in the desired percentage of valid input patterns
     """
 
     # Calculate the maximum signal for each input pattern
-    max_signals = np.max(output, axis=0)
+    max_signals = np.max(outputs, axis=0)
 
     # Determine the threshold value that results in the desired percentage of valid input patterns
     threshold = np.percentile(max_signals, 100 * percentage)
@@ -162,8 +190,12 @@ def search_threshold_with_ref(output, current_threshold=0.2405, target_count=137
     new_threshold = current_threshold
     valid_count = valid_count_current
 
+    if valid_count_current == target_count:
+        df.loc[0, 'final_threshold'],  df.loc[0, 'final_valid_count'] = current_threshold, valid_count
+        return current_threshold, valid_count, df
+    
     # If current valid count is too low increase the threshold
-    if valid_count_current < target_count:
+    elif valid_count_current < target_count:
         # Incrementally increase the threshold until it exceeds the upper endpoint.
         while valid_count < target_count and new_threshold <= upper_threshold:
             new_threshold += step
@@ -184,7 +216,7 @@ def search_threshold_with_ref(output, current_threshold=0.2405, target_count=137
     return None, None, df
 
 
-def get_valid_inputs_and_outputs(weights, input_patterns, outputs, threshold, save = False, outfile_suffix = ''):
+def get_valid_inputs_and_outputs(weights, input_patterns, outputs, threshold):
     """
     Determine the valid input patterns based on the chosen threshold
 
@@ -192,7 +224,6 @@ def get_valid_inputs_and_outputs(weights, input_patterns, outputs, threshold, sa
     :param input_patterns: The matrix of input patterns
     :param outputs: The signal reaching the output nodes for each input pattern
     :param threshold: The threshold value used to determine valid input patterns
-    :param save: Whether to save the matrices to .csv files
 
     :return: The valid input patterns, the input matrix for valid input patterns, and the output signals for valid input patterns
     """
@@ -204,76 +235,23 @@ def get_valid_inputs_and_outputs(weights, input_patterns, outputs, threshold, sa
     valid_outputs = outputs[:, valid_input_pattern_indices]
     valid_weights = weights[:, :, valid_input_pattern_indices]
 
-    if save:
-        np.savetxt(os.path.join(BASE_PATH, f'data/valid_input_weights(thresholded){outfile_suffix}.csv'), valid_weights.reshape(-1, valid_weights.shape[-1]), delimiter=",")
-        np.savetxt(os.path.join(BASE_PATH, f'data/valid_input_patterns(thresholded){outfile_suffix}.csv'), valid_input_patterns, delimiter=",", fmt='%d')
-        np.savetxt(os.path.join(BASE_PATH, f'data/valid_output_signals(thresholded){outfile_suffix}.csv'), valid_outputs, delimiter=",", fmt='%.4f')
-
     return valid_input_patterns, valid_weights, valid_outputs
 
 
-def get_output_statistics(valid_output):
+def get_output_statistics(outputs):
     """
     Calculate the variance in the output patterns
 
-    :param valid_output: The signal reaching the output nodes for each valid input pattern
+    :param outputs: The signal reaching the output nodes for each input pattern
 
     :return: The variance in the output patterns, the average variance, and the standard deviation of the variance
     """
 
-    variance = np.max(valid_output, axis=0) - np.min(valid_output, axis=0)
+    variance = np.max(outputs, axis=0) - np.min(outputs, axis=0)
     avg_variance = np.mean(variance)
     sd_variance = np.std(variance)
 
     return variance, avg_variance, sd_variance
-
-
-def select_patterns(initial_weights):
-    """
-    Select valid input patterns based on the maximum signal reaching the output nodes for each input pattern
-
-    :param initial_weights: The initial weights of the network
-    """
-
-    input_patterns, weights, outputs = get_input_and_output_patterns(initial_weights)
-
-    # Define threshold values to attempt
-    th_values = [0.2, 0.2405, 0.28, 0.275, 0.278]
-    threshold = select_threshold(th_values, outputs)
-    # threshold = get_threshold_open(output, percentage=0.230755)
-
-    valid_input_patterns, valid_input, valid_output = get_valid_inputs_and_outputs(threshold, weights, input_patterns, outputs)
-
-    # Display the chosen threshold and valid input pattern indices
-    print("Chosen threshold:", threshold)
-    print("Number of valid input patterns:", valid_input_patterns.shape[1])
-
-    variance, avg_variance, sd_variance = get_output_statistics(valid_output)
-
-    plot_signal_statistics(outputs, threshold, variance, avg_variance, sd_variance)
-
-
-def select_patterns_with_ref_threshold(data_file_path, dfs):
-
-    # Read the input matrix from CSV file
-    initial_weights = np.loadtxt(os.path.join(BASE_PATH, f'{data_file_path}'), delimiter=',')
-
-    input_patterns, input, output = get_input_and_output_patterns(initial_weights)
-
-    threshold, valid_pattern_count, df = search_threshold_with_ref(output)
-    dfs.append(df)
-
-    print(df)
-
-    valid_input_patterns, valid_input, valid_output = get_valid_inputs_and_outputs(threshold, input, input_patterns, output, save=True, outfile_suffix=f'sample_{data_file_path.split('_')[-1].split('.')[0]}')
-
-    # # Display the chosen threshold and valid input pattern indices
-    # print("Chosen threshold:", threshold)
-    # print("Number of valid input patterns:", valid_input_patterns.shape[1])
-
-    # variance, avg_variance, sd_variance = get_output_statistics(valid_output)
-
-    # plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance)
 
 
 def plot_signal_statistics(output, threshold, variance, avg_variance, sd_variance):
@@ -315,46 +293,31 @@ def plot_signal_statistics(output, threshold, variance, avg_variance, sd_varianc
 def main():
 
     # Load config
-    with open('config.json') as f:
+    with open(os.path.join(BASE_PATH, 'config.json')) as f:
         config = json.load(f)
 
-    ## ----- SELECT PATTERNS ----- ##
+
+    ##### ----- SELECT PATTERNS ----- #######
 
     initial_weights = np.loadtxt(os.path.join(BASE_PATH, config['initial_weights_file']), delimiter=',')
-    select_patterns(initial_weights)
 
-    # select_patterns('data\original_data\Inputs_normal_dis.csv')
+    input_patterns, weights, outputs = get_all_input_and_output_patterns(initial_weights)
 
+    # Define threshold values to attempt
+    thresholds = [0.2, 0.2405, 0.28, 0.275, 0.278]
+    threshold = select_threshold(thresholds, outputs)
+    # threshold = find_threshold(output, percentage=0.230755)
 
-    ## ----- SELECT PATTERNS WITH REFERENCE THRESHOLD ----- ##
+    valid_input_patterns, valid_weights, valid_outputs = get_valid_inputs_and_outputs(threshold, weights, input_patterns, outputs)
 
-    # dfs = []
-    # valid_trials = [0, 2, 6, 9, 10, 11, 14, 15, 16, 20, 21, 24, 27, 28, 29, 30, 35, 38, 39]
+    # Save the valid input patterns, weights, and output signals to .csv files
+    np.savetxt(os.path.join(BASE_PATH, config['weights_per_pattern_file']), valid_weights.reshape(-1, valid_weights.shape[-1]), delimiter=",")
+    np.savetxt(os.path.join(BASE_PATH, config['input_patterns_file']), valid_input_patterns, delimiter=",", fmt='%d')
+    np.savetxt(os.path.join(BASE_PATH, config['initial_outputs_file']), valid_outputs, delimiter=",", fmt='%.4f')
 
-    # for i in valid_trials:
-    #     print(f"\nProcessing sample {i+1}...")
-    #     select_patterns_with_ref_threshold(f'data\sample_weights\inputs_normal_dis_{i+1}.csv', dfs)
-    
-    # # Save the results to a CSV file
-    # df = pd.concat(dfs, ignore_index=True)
-    # df.to_csv(os.path.join(BASE_PATH, 'results\\threshold_selection_results_3.csv'), index=False)
-    # print("\nResults saved to CSV file.")
-    # print(df)
+    variance, avg_variance, sd_variance = get_output_statistics(valid_outputs)
 
-    ## ----- FIND THRESHOLD FOR WEIGHTS WITH PRIOR KNOWLEDGE ----- ##
-
-    weights1 = np.loadtxt(os.path.join(BASE_PATH, 'results\learned_weights_random.csv'), delimiter=',')
-    weights2 = np.loadtxt(os.path.join(BASE_PATH, 'results\learned_weights_rw_inverse.csv'), delimiter=',')
-    weights3 = np.loadtxt(os.path.join(BASE_PATH, 'results\learned_weights_for_input_pattern.csv'), delimiter=',')
-
-    for weights in [weights1, weights2, weights3]:
-        input_patterns, input, output = get_input_and_output_patterns(weights)
-        print(f"\nShape of output matrix: {output.shape}")
-        threshold, valid_pattern_count, df = search_threshold_with_ref(output)
-        
-        print(f"\nThreshold for weights with prior knowledge: {threshold}")
-        print(f"Number of valid input patterns: {valid_pattern_count}")
-        print(df)
+    plot_signal_statistics(outputs, threshold, variance, avg_variance, sd_variance)
 
 
 if __name__ == '__main__':

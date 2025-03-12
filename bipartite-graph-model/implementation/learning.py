@@ -2,6 +2,7 @@ import json
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+
 from utils import roulette_wheel_selection
 from constants import BASE_PATH, ACTIVE_NODE_COUNT, COLOURS
 

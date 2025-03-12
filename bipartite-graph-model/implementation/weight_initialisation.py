@@ -1,7 +1,9 @@
 import json
 import os
-from matplotlib import pyplot as plt
+
 import numpy as np
+from matplotlib import pyplot as plt
+
 from constants import BASE_PATH, TOTAL_NODE_COUNT
 from learning import execute_young_learning
 from utils import roulette_wheel_selection
@@ -64,7 +66,7 @@ def plot_weight_distribution(weights):
     plt.xlabel('Weight', fontsize=10)
     plt.title('Initial weight distribution of the model', fontsize=12)
     plt.savefig(os.path.join(BASE_PATH, f'figures/weights.png'), dpi=300)
-    # plt.show()
+    plt.show()
 
     plt.hist(output, bins=10, color=[0.2, 0.9, 0.2], alpha=0.7, edgecolor='black')
     plt.ylabel('Number of nodes', fontsize=10)
