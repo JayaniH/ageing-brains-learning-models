@@ -4,7 +4,7 @@ import os
 import numpy as np
 from matplotlib import pyplot as plt
 
-from constants import BASE_PATH, TOTAL_NODE_COUNT
+from constants import BASE_PATH, COLOURS, TOTAL_NODE_COUNT, THRESHOLD
 from learning import execute_young_learning
 from utils import roulette_wheel_selection
 
@@ -61,7 +61,7 @@ def plot_weight_distribution(weights):
 
     output = np.sum(weights, axis=0)
 
-    plt.hist(initial_weights.flatten(), bins=10, color=[0.2, 0.2, 0.9], alpha=0.7, edgecolor='black')
+    plt.hist(initial_weights.flatten(), bins=10, color=COLOURS['LIGHT_BLUE'], alpha=0.7, edgecolor='black')
     plt.ylabel('Number of edges', fontsize=10)
     plt.xlabel('Weight', fontsize=10)
     plt.title('Initial weight distribution of the model', fontsize=12)
@@ -84,49 +84,34 @@ def plot_weight_distribution(weights):
     plt.show()
 
 
-def add_prior_knowledge_to_weights_randomly(weights, count=6, learning_rate=1.5):
+def add_prior_knowledge_with_rw_selection(weights, node_count=6, edge_count=6, learning_rate=1.5):
     """
-    Add prior knowledge to the weights randomly
+    Add prior knowledge to the weights based on roulette wheel selection
 
     :param weights: Array of weights
-    :param count: Number of weights to be changed
+    :param node_count: Number of nodes to be changed
+    :param edge_count: Number of edges to be changed
     :param learning_rate: Learning rate for the weights
 
     :return weights: Array of weights with prior knowledge added
+    :return mask: Mask of the weights
     """
 
-    # randomly select count number of weights to be changed
-    indices = np.random.choice(weights.size, count, replace=False)
-    print("Indices to be changed:", indices)
+    mask = np.ones_like(weights)
 
-    # multiply the selected weights by the learning rate
-    weights = weights.flatten()
-    weights[indices] *= learning_rate
+    # Select node_count number of nodes using roulette wheel selection
+    print(np.sum(weights, axis=0))
+    node_indices = roulette_wheel_selection(np.sum(weights, axis=0), node_count)
 
-    return weights.reshape(TOTAL_NODE_COUNT, TOTAL_NODE_COUNT)
-
- 
-def add_prior_knowledge_to_weights_inverse_proportionally(weights, count=6, learning_rate=1.5):
-    """
-    Add prior knowledge to the weights based on inverse roulette wheel selection
-
-    :param weights: Array of weights
-    :param count: Number of weights to be changed
-    :param learning_rate: Learning rate for the weights
-
-    :return weights: Array of weights with prior knowledge added
-    """
-
-    weights = weights.flatten()
-    indices = roulette_wheel_selection(weights, count, inverse=True)
-
-    # multiply the selected weights by the learning rate
-    weights[indices] *= learning_rate
-
-    return weights.reshape(TOTAL_NODE_COUNT, TOTAL_NODE_COUNT)
+    for i, node_index in enumerate(node_indices):
+        edge_indices = roulette_wheel_selection(weights[:, node_index], edge_count)
+        weights[edge_indices, node_index] *= learning_rate
+        mask[edge_indices, node_index] = 0
+    
+    return weights, mask
 
 
-def add_prior_knowledge_with_learning(weights, input_pattern):
+def add_prior_knowledge_with_learning(initial_weights, input_pattern):
     """
     Add prior knowledge to the weights based on the input pattern
 
@@ -136,11 +121,9 @@ def add_prior_knowledge_with_learning(weights, input_pattern):
     :return weights: Array of weights with prior knowledge added
     """
 
-    threshold = 0.2405
+    weights, _, _, _, learnable_weights_filter = execute_young_learning(initial_weights, input_pattern, THRESHOLD)
 
-    weights, _, _, _ = execute_young_learning(weights, input_pattern, threshold)
-
-    return weights
+    return weights, learnable_weights_filter
 
 
 if __name__ == "__main__":
@@ -164,18 +147,26 @@ if __name__ == "__main__":
 
     ######## ADD PRIOR KNOWLEDGE ########
 
-    # Add prior knowledge to the weights randomly
-    weights1 = add_prior_knowledge_to_weights_randomly(initial_weights)
-
-    # Add prior knowledge to the weights based on inverse roulette wheel selection
-    weights2 = add_prior_knowledge_to_weights_inverse_proportionally(initial_weights)
-
     # Add prior knowledge to the weights based on the input pattern
-    input_patterns = np.loadtxt(os.path.join(BASE_PATH, 'data/main/valid_input_patterns(thresholded).csv'), delimiter=',')
-    # Select a random input pattern
-    input_pattern = input_patterns[:, np.random.randint(input_patterns.shape[1])]
-    weights3 = add_prior_knowledge_with_learning(initial_weights, input_pattern)
+    input_patterns = np.loadtxt(os.path.join(BASE_PATH, config['input_patterns_file']), delimiter=',')
 
-    np.savetxt(os.path.join(BASE_PATH, config['random_learned_weights_file']), weights1, delimiter=',')
+    # Select a random input pattern
+    random_pattern_index = np.random.randint(input_patterns.shape[1])
+
+    # Save the random pattern index
+    with open(os.path.join(BASE_PATH, config['random_input_pattern_index_file']), 'w') as f:
+        f.write(str(random_pattern_index))
+
+    input_pattern = input_patterns[:, random_pattern_index]
+    weights1, filter1 = add_prior_knowledge_with_learning(initial_weights, input_pattern)
+
+
+    # Add prior knowledge to the weights based on roulette wheel selection
+    weights2, filter2 = add_prior_knowledge_with_rw_selection(initial_weights)
+
+    np.savetxt(os.path.join(BASE_PATH, config['pattern_learned_weights_file']), weights1, delimiter=',')
+    np.savetxt(os.path.join(BASE_PATH, config['pattern_learned_weights_mask_file']), filter1, delimiter=',')
+
     np.savetxt(os.path.join(BASE_PATH, config['rw_learned_weights_file']), weights2, delimiter=',')
-    np.savetxt(os.path.join(BASE_PATH, config['pattern_learned_weights_file']), weights3, delimiter=',')
+    np.savetxt(os.path.join(BASE_PATH, config['rw_learned_weights_mask_file']), filter2, delimiter=',')
+
