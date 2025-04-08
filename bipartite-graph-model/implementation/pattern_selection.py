@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from itertools import combinations
 from matplotlib import pyplot as plt
-from constants import ACTIVE_NODE_COUNT, BASE_PATH, TOTAL_NODE_COUNT
+from constants import ACTIVE_NODE_COUNT, BASE_PATH, COLOURS, TOTAL_NODE_COUNT
 
 def get_all_input_and_output_patterns(initial_weights):
     """
@@ -267,22 +267,22 @@ def plot_signal_statistics(output, threshold, variance, avg_variance, sd_varianc
     max_outputs = np.max(output, axis=0)  # Maximum signal reaching each of the nodes for a given IP
 
     # Plot maximum signal reaching output nodes
-    plt.hist(max_outputs, color=[0.3, 0.9, 0.9], bins=30, edgecolor='black')  # Plot the histogram
+    plt.hist(max_outputs, color=COLOURS['LIGHT_BLUE'], bins=30, edgecolor='black')  # Plot the histogram
     # plt.xlim(0.2, 0.32)
     plt.axvline(threshold, color='red', linewidth=3)  # To show the determined threshold
-    plt.title("Maximum signal reaching output nodes", fontsize=12)
-    plt.xlabel("Maximum output signal", fontsize=10)
-    plt.ylabel("Number of input patterns", fontsize=10)
-    plt.text(0.28, 22800, f'Threshold = {threshold:.4f}', fontsize=10)
+    plt.title("Maximum signal reaching output nodes", fontsize=16)
+    plt.xlabel("Maximum output signal", fontsize=12)
+    plt.ylabel("Number of input patterns", fontsize=12)
+    plt.text(0.27, 22800, f'Threshold = {threshold:.4f}', fontsize=12)
     plt.gca().set_facecolor('w')
     plt.savefig(os.path.join(BASE_PATH, f'figures/threshold.png'), dpi=300)
     plt.show()
 
     # Plot the variance in output patterns
-    plt.hist(variance, color=[0.1, 0.9, 0.3], bins=30, edgecolor='black')
-    plt.title("Output signal variance (difference between minimum and maximum)", fontsize=12)
-    plt.xlabel("Signal variance", fontsize=10)
-    plt.ylabel("Number of input patterns", fontsize=10)
+    plt.hist(variance, color=COLOURS['LIGHT_BLUE'], bins=30, edgecolor='black')
+    plt.title("Output signal variance (difference between minimum and maximum)", fontsize=16)
+    plt.xlabel("Signal variance", fontsize=12)
+    plt.ylabel("Number of input patterns", fontsize=12)
     plt.text(0.1, 10000, f'Mean variance = {avg_variance:.4f}', fontsize=10)
     plt.text(0.1, 9000, f'SD variance = {sd_variance:.4f}', fontsize=10)
     plt.gca().set_facecolor('w')
@@ -308,7 +308,7 @@ def main():
     threshold = select_threshold(thresholds, outputs)
     # threshold = find_threshold(output, percentage=0.230755)
 
-    valid_input_patterns, valid_weights, valid_outputs = get_valid_inputs_and_outputs(threshold, weights, input_patterns, outputs)
+    valid_input_patterns, valid_weights, valid_outputs = get_valid_inputs_and_outputs(weights, input_patterns, outputs, threshold)
 
     # Save the valid input patterns, weights, and output signals to .csv files
     np.savetxt(os.path.join(BASE_PATH, config['weights_per_pattern_file']), valid_weights.reshape(-1, valid_weights.shape[-1]), delimiter=",")
